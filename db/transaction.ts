@@ -20,6 +20,7 @@ type PrismaClientLike = Pick<
   | "usageEvent"
   | "membership"
   | "normalizedSource"
+  | "normalizedSourceChunk"
   | "auditLog"
   | "organization"
   | "user"
