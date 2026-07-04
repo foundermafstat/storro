@@ -8,6 +8,7 @@ type PrismaClientLike = Pick<
   | "$transaction"
   | "artifactExport"
   | "editorRevision"
+  | "extractionFact"
   | "extractionRun"
   | "job"
   | "project"
