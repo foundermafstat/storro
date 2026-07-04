@@ -95,7 +95,7 @@ enum IntegrationProvider {
   CODEX
   CLI
   MCP
-  CLERK
+  NEXT_AUTH
   STRIPE
   OPENAI
   OBJECT_STORAGE
@@ -152,7 +152,6 @@ enum BillingStatus {
 
 enum WebhookProvider {
   GITHUB
-  CLERK
   STRIPE
 }
 
@@ -166,7 +165,7 @@ enum WebhookStatus {
 
 model User {
   id             String    @id @default(uuid())
-  clerkUserId    String    @unique
+  authUserId     String    @unique
   email          String?   @unique
   name           String?
   imageUrl       String?
@@ -185,7 +184,6 @@ model User {
 
 model Organization {
   id           String   @id @default(uuid())
-  clerkOrgId   String?  @unique
   name         String
   slug         String   @unique
   createdAt    DateTime @default(now())

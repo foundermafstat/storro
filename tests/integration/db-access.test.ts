@@ -20,13 +20,13 @@ describe("database access layer", () => {
     const [userA, userB] = await Promise.all([
       prisma.user.create({
         data: {
-          clerkUserId: `test-user-a-${suffix}`,
+          authUserId: `test-user-a-${suffix}`,
           email: `test-user-a-${suffix}@storro.local`,
         },
       }),
       prisma.user.create({
         data: {
-          clerkUserId: `test-user-b-${suffix}`,
+          authUserId: `test-user-b-${suffix}`,
           email: `test-user-b-${suffix}@storro.local`,
         },
       }),

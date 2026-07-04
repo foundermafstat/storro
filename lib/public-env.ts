@@ -4,7 +4,6 @@ type EnvInput = Record<string, string | undefined>;
 
 const publicEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url(),
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
 });
 
 export type PublicEnv = z.infer<typeof publicEnvSchema>;

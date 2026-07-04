@@ -18,7 +18,7 @@ Browser
   -> OpenAI Responses API
   -> GitHub App API
   -> Stripe Billing API
-  -> Clerk identity platform
+  -> NextAuth/Auth.js session layer
   -> Storro MCP server
 ```
 
@@ -32,19 +32,19 @@ Browser
 - **Queue:** Redis and BullMQ run all long-running or external-call workflows.
 - **Object storage:** S3/R2 stores uploaded files, large source payloads, generated exports, and job artifacts.
 - **AI gateway:** all model calls go through one typed gateway with prompt versions, structured output validation, usage tracking, retries, and audit metadata.
-- **Integration layer:** GitHub App, Stripe, Clerk webhooks, ChatGPT App through MCP, Codex evidence through GitHub, CI artifacts, CLI snapshots, and future plugin paths.
+- **Integration layer:** GitHub App, Stripe, NextAuth/Auth.js, ChatGPT App through MCP, Codex evidence through GitHub, CI artifacts, CLI snapshots, and future plugin paths.
 
 ## Environment Tiers
 
 - **Development:** local app, local or managed PostgreSQL, local Redis, sandbox integrations, test object bucket.
 - **Staging:** production-like services, isolated secrets, test Stripe mode, GitHub test app, restricted test users.
-- **Production:** managed PostgreSQL, managed Redis, durable object storage, production Clerk, production Stripe, production GitHub App, alerting, backups, and incident runbooks.
+- **Production:** managed PostgreSQL, managed Redis, durable object storage, production NextAuth/Auth.js, production Stripe, production GitHub App, alerting, backups, and incident runbooks.
 
 ## Data Ownership Rules
 
 - Every customer-owned record is scoped by `orgId`.
 - Project records are scoped by both `orgId` and `projectId`.
-- User identity is mirrored from Clerk but authorization is enforced by Storro service guards.
+- User identity is resolved through NextAuth/Auth.js and mirrored into local Storro users; authorization is enforced by Storro service guards.
 - Source documents keep provenance, privacy flags, redaction state, and source references.
 - Generated artifacts must keep links to the approved extraction facts and source IDs used to create them.
 - Integration tokens are encrypted at rest or generated on demand.
@@ -82,7 +82,7 @@ Browser
 - `services/` - domain services and authorization-aware workflows.
 - `db/` - Prisma client, schema, seed, migrations, scoped query helpers.
 - `workers/` - BullMQ queues, processors, schedulers, and job contracts.
-- `integrations/` - GitHub, Clerk, Stripe, object storage, MCP, and CLI integration code.
+- `integrations/` - GitHub, NextAuth/Auth.js, Stripe, object storage, MCP, and CLI integration code.
 - `ai/` - AI gateway, prompts, schemas, model routing, grounding, and evaluations.
 - `tests/` - unit, integration, contract, E2E, webhook replay, and AI evaluation tests.
 

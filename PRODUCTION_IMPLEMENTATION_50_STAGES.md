@@ -25,7 +25,7 @@ This plan intentionally excludes MVP shortcuts:
 - **Database:** PostgreSQL with Prisma migrations.
 - **Queue:** Redis + BullMQ for async ingestion, extraction, generation, webhook processing, and exports.
 - **Object storage:** S3/R2-compatible storage for uploaded files, exports, large source payloads, and generated artifacts.
-- **Auth:** Clerk for user identity, organizations, MFA, SSO path, and session management.
+- **Auth:** NextAuth/Auth.js for user identity and session management, with Storro-owned organizations, memberships, and RBAC.
 - **Authorization:** internal RBAC and resource scoping by `orgId`, `projectId`, and role.
 - **Payments:** Stripe Billing with plans, quotas, invoices, and webhook reconciliation.
 - **AI:** OpenAI Responses API with structured outputs, schema validation, model routing, retry policy, and usage accounting.
@@ -92,7 +92,7 @@ Initialize the production codebase using Next.js App Router and TypeScript stric
 **Goal:** make all runtime configuration typed, validated, and environment-aware.
 
 **Implementation prompt:**  
-Implement a typed environment configuration layer using Zod. Define required variables for database, Redis, object storage, Clerk, Stripe, OpenAI, GitHub App, webhooks, encryption keys, public app URL, worker URL, and logging. Add separate examples for local, staging, and production. Fail fast on invalid server config and expose only safe public config to the client.
+Implement a typed environment configuration layer using Zod. Define required variables for database, Redis, object storage, NextAuth/Auth.js, Stripe, OpenAI, GitHub App, webhooks, encryption keys, public app URL, worker URL, and logging. Add separate examples for local, staging, and production. Fail fast on invalid server config and expose only safe public config to the client.
 
 **Completion test:**
 
@@ -143,17 +143,17 @@ Build a database access layer with scoped service functions. Route handlers must
 - Unit tests verify that cross-org access returns no data.
 - Transaction tests cover rollback on failure.
 
-### Stage 07 — Clerk Authentication Integration
+### Stage 07 — NextAuth Authentication Integration
 
 **Goal:** implement production user identity, sessions, and organization mapping.
 
 **Implementation prompt:**  
-Integrate Clerk authentication with Next.js middleware. Mirror Clerk users and organizations into the local database through verified webhooks. Store local `userId`, `orgId`, membership role, and billing customer reference. Add authenticated layout handling, sign-in, sign-up, organization switcher, and session-aware API helpers.
+Integrate NextAuth/Auth.js authentication with Next.js proxy protection. Mirror authenticated users into the local database, keep organizations and memberships owned by Storro, and store local `userId`, `orgId`, membership role, and billing customer reference. Add authenticated layout handling, sign-in, sign-out, organization switcher, and session-aware API helpers.
 
 **Completion test:**
 
 - Unauthenticated users are redirected from protected routes.
-- Clerk webhook creates or updates local users and organizations.
+- NextAuth sign-in/session resolution creates or updates local users and resolves local organization context.
 - API requests include a resolved local user and org context.
 - Organization switching changes scoped project visibility.
 

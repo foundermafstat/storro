@@ -15,9 +15,9 @@ const validEnv = {
   OBJECT_STORAGE_ACCESS_KEY_ID: "access-key",
   OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret-key",
   OBJECT_STORAGE_PUBLIC_BASE_URL: "https://cdn.storro.example",
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_clerk",
-  CLERK_SECRET_KEY: "sk_test_clerk",
-  CLERK_WEBHOOK_SECRET: "whsec_clerk",
+  AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+  AUTH_GITHUB_ID: "github-oauth-client-id",
+  AUTH_GITHUB_SECRET: "github-oauth-client-secret",
   STRIPE_SECRET_KEY: "sk_test_stripe",
   STRIPE_WEBHOOK_SECRET: "whsec_stripe",
   STRIPE_PRICE_PRO_MONTHLY: "price_pro",
@@ -55,7 +55,6 @@ describe("environment contract", () => {
 
     expect(env).toEqual({
       NEXT_PUBLIC_APP_URL: "https://storro.example",
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_clerk",
     });
     expect(publicEnvKeys.every((key) => key.startsWith("NEXT_PUBLIC_"))).toBe(true);
     expect(Object.keys(env)).not.toContain("OPENAI_API_KEY");

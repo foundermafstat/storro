@@ -9,7 +9,7 @@ export default async function DashboardPage() {
     <main className="mx-auto min-h-screen max-w-7xl px-6 py-10">
       <h1 className="text-3xl font-semibold">Dashboard</h1>
       <p className="mt-2 text-sm text-[color:var(--muted)]">
-        Organization-scoped project memory for the active Clerk organization.
+        Organization-scoped project memory for the selected Storro workspace.
       </p>
       <section className="mt-8 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
         {projects.length === 0 ? (

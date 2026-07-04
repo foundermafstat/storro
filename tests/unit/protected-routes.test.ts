@@ -9,7 +9,7 @@ describe("protected route map", () => {
     expect(isProtectedPath("/api/projects")).toBe(true);
   });
 
-  it("keeps Clerk webhook public for signature verification", () => {
-    expect(isProtectedPath("/api/webhooks/clerk")).toBe(false);
+  it("keeps NextAuth API routes public for session flows", () => {
+    expect(isProtectedPath("/api/auth/signin")).toBe(false);
   });
 });

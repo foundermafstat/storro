@@ -29,19 +29,19 @@ describe("authorization guards", () => {
     const [owner, editor, viewer] = await Promise.all([
       prisma.user.create({
         data: {
-          clerkUserId: `auth-owner-${suffix}`,
+          authUserId: `auth-owner-${suffix}`,
           email: `auth-owner-${suffix}@storro.local`,
         },
       }),
       prisma.user.create({
         data: {
-          clerkUserId: `auth-editor-${suffix}`,
+          authUserId: `auth-editor-${suffix}`,
           email: `auth-editor-${suffix}@storro.local`,
         },
       }),
       prisma.user.create({
         data: {
-          clerkUserId: `auth-viewer-${suffix}`,
+          authUserId: `auth-viewer-${suffix}`,
           email: `auth-viewer-${suffix}@storro.local`,
         },
       }),

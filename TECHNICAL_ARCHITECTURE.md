@@ -1486,7 +1486,7 @@ Good:
 MVP options:
 
 - Auth.js with GitHub login;
-- Clerk for faster production auth;
+- NextAuth/Auth.js for production auth;
 - local demo mode for hackathon demo only.
 
 ### 20.2 Authorization
@@ -1859,4 +1859,3 @@ When implementing this product with Codex:
 8. Do not build social posting before markdown export works.
 9. Do not overbuild auth if demo speed matters; use local demo user if necessary.
 10. Prioritize a beautiful end-to-end demo over many half-finished integrations.
-

@@ -1,5 +1,5 @@
 const protectedPathPrefixes = ["/dashboard", "/projects", "/settings", "/api"];
-const publicApiPathPrefixes = ["/api/webhooks/clerk"];
+const publicApiPathPrefixes = ["/api/auth"];
 
 export function isProtectedPath(pathname: string) {
   if (publicApiPathPrefixes.some((prefix) => pathname.startsWith(prefix))) {

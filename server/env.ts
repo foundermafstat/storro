@@ -23,9 +23,9 @@ const serverEnvSchema = z.object({
   OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().min(1),
   OBJECT_STORAGE_PUBLIC_BASE_URL: z.string().url(),
 
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
-  CLERK_SECRET_KEY: z.string().min(1),
-  CLERK_WEBHOOK_SECRET: z.string().min(1),
+  AUTH_SECRET: z.string().min(32, "Must be at least 32 characters"),
+  AUTH_GITHUB_ID: z.string().min(1),
+  AUTH_GITHUB_SECRET: z.string().min(1),
 
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),

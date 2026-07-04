@@ -117,7 +117,7 @@ The MVP must prove the core value first: **high-quality writing from real build 
 - **UI:** Tailwind CSS + shadcn/ui.
 - **Database:** PostgreSQL.
 - **ORM:** Prisma.
-- **Auth:** Auth.js / NextAuth or Clerk for faster MVP.
+- **Auth:** NextAuth/Auth.js.
 - **AI:** OpenAI Responses API with structured outputs.
 - **GitHub Integration:** GitHub App for production, fine-grained personal access token for local MVP.
 - **Background Jobs:** MVP can start with a database-backed job table; production should move to BullMQ / Trigger.dev / Inngest.
