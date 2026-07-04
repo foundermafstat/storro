@@ -1,4 +1,4 @@
-import type { Prisma, SourceType } from "@prisma/client";
+import type { Prisma, SourceDocument, SourceType } from "@prisma/client";
 import { prisma } from "@/db/client";
 import type { DatabaseClient } from "@/db/transaction";
 import {
@@ -318,7 +318,7 @@ export async function selectSourceDocumentsForExtraction(
   requireScopedContext(context);
   await assertProjectPermission(context, input.projectId, "extraction.write", db);
 
-  return db.sourceDocument.findMany({
+  const sources = await db.sourceDocument.findMany({
     where: {
       orgId: context.orgId,
       projectId: input.projectId,
@@ -332,6 +332,25 @@ export async function selectSourceDocumentsForExtraction(
       createdAt: "asc",
     },
   });
+
+  return [...sources].sort((a, b) => {
+    const priorityDelta = calculateSourceExtractionPriority(b) - calculateSourceExtractionPriority(a);
+
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
+}
+
+export function calculateSourceExtractionPriority(
+  source: Pick<SourceDocument, "sourceType" | "metadata">,
+) {
+  const metadataBoost = readManualRankingBoost(source.metadata);
+  const sourceTypeBoost = source.sourceType === "MANUAL_NOTE" ? 100 : 0;
+
+  return sourceTypeBoost + metadataBoost;
 }
 
 export function classifySourceType(provenance?: SourceProvenanceInput): SourceType {
@@ -398,4 +417,13 @@ function toInputJsonObject(value: unknown): Prisma.InputJsonObject {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function readManualRankingBoost(metadata: Prisma.JsonValue | null) {
+  if (!isRecord(metadata) || !isRecord(metadata.manualNote)) {
+    return 0;
+  }
+
+  const value = metadata.manualNote.rankingBoost;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
