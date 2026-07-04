@@ -11,6 +11,7 @@ type PrismaClientLike = Pick<
   | "extractionRun"
   | "job"
   | "project"
+  | "redactionReport"
   | "sourceConnection"
   | "sourceDocument"
   | "sourceFile"
