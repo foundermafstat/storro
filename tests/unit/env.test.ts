@@ -26,7 +26,7 @@ const validEnv = {
   OPENAI_MODEL_EXTRACTION: "gpt-test-extraction",
   OPENAI_MODEL_GENERATION: "gpt-test-generation",
   GITHUB_APP_ID: "12345",
-  GITHUB_APP_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----",
+  GITHUB_APP_PRIVATE_KEY: "escaped-github-private-key-line-one\\nline-two",
   GITHUB_APP_WEBHOOK_SECRET: "github-webhook-secret",
   GITHUB_APP_CLIENT_ID: "github-client-id",
   GITHUB_APP_CLIENT_SECRET: "github-client-secret",

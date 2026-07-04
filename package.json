@@ -9,7 +9,12 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:unit": "vitest run tests/unit --passWithNoTests",
+    "test:integration": "vitest run tests/integration --passWithNoTests",
+    "test:watch": "vitest",
+    "prisma:validate": "node scripts/prisma-validate.mjs",
+    "secret:scan": "node scripts/secret-scan.mjs",
+    "audit:ci": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@hookform/resolvers": "latest",

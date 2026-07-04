@@ -1,0 +1,42 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  staging:
+    name: Staging Deployment Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify staging candidate
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run test:unit
+          npm run prisma:validate
+          npm run secret:scan
+          npm run build
+
+      - name: Staging deployment placeholder
+        run: echo "Staging deployment provider wiring belongs here."

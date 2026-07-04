@@ -1,0 +1,57 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Main branch commit SHA to deploy"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  production:
+    name: Production Deployment Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate requested commit
+        run: |
+          if [ "${{ inputs.commit_sha }}" != "${GITHUB_SHA}" ]; then
+            echo "Production deploy must be run from the checked main commit."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify production candidate
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run test:unit
+          npm run test:integration
+          npm run prisma:validate
+          npm run secret:scan
+          npm run audit:ci
+          npm run build
+
+      - name: Production deployment placeholder
+        run: echo "Production deployment provider wiring belongs here."
