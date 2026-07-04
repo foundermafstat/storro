@@ -1,0 +1,42 @@
+name: Storro CI Context
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  storro-context:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+      - name: Collect context
+        run: |
+          git diff --stat origin/${{ github.base_ref || 'main' }}...HEAD > diff-stat.txt
+          git diff origin/${{ github.base_ref || 'main' }}...HEAD > full-diff.txt
+          git diff --name-only origin/${{ github.base_ref || 'main' }}...HEAD > changed-files.txt
+          npm test -- --runInBand > test-results.txt || true
+      - name: Send to Storro
+        env:
+          STORRO_INGEST_URL: ${{ secrets.STORRO_INGEST_URL }}
+          STORRO_INGEST_TOKEN: ${{ secrets.STORRO_INGEST_TOKEN }}
+          STORRO_PROJECT_ID: ${{ secrets.STORRO_PROJECT_ID }}
+        run: |
+          jq -n \
+            --arg projectId "$STORRO_PROJECT_ID" \
+            --arg repository "${{ github.repository }}" \
+            --arg runId "${{ github.run_id }}" \
+            --arg runAttempt "${{ github.run_attempt }}" \
+            --arg sha "${{ github.sha }}" \
+            --arg ref "${{ github.ref_name }}" \
+            --arg diffStat "$(cat diff-stat.txt)" \
+            --arg fullDiff "$(cat full-diff.txt)" \
+            --arg testResults "$(cat test-results.txt)" \
+            --arg ciContext "GitHub Actions collected diff, changed files, and test output." \
+            --argjson changedFiles "$(jq -R -s -c 'split("\n")[:-1]' changed-files.txt)" \
+            '{projectId:$projectId,repository:$repository,runId:$runId,runAttempt:$runAttempt,sha:$sha,ref:$ref,diffStat:$diffStat,fullDiff:$fullDiff,testResults:$testResults,changedFiles:$changedFiles,ciContext:$ciContext}' \
+          | curl -f -X POST "$STORRO_INGEST_URL/api/ingest/github-action" \
+              -H "authorization: Bearer $STORRO_INGEST_TOKEN" \
+              -H "content-type: application/json" \
+              --data-binary @-
