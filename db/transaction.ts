@@ -11,6 +11,7 @@ type PrismaClientLike = Pick<
   | "editorRevision"
   | "extractionFact"
   | "extractionRun"
+  | "githubInstallation"
   | "job"
   | "project"
   | "redactionReport"
