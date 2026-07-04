@@ -18,6 +18,7 @@ type PrismaClientLike = Pick<
   | "storyRun"
   | "usageEvent"
   | "membership"
+  | "normalizedSource"
   | "auditLog"
   | "organization"
   | "user"
