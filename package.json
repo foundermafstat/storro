@@ -2,6 +2,9 @@
   "name": "storro",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "storro": "./bin/storro.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
