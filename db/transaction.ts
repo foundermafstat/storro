@@ -12,6 +12,7 @@ type PrismaClientLike = Pick<
   | "extractionFact"
   | "extractionRun"
   | "githubInstallation"
+  | "integrationAccount"
   | "job"
   | "project"
   | "redactionReport"
