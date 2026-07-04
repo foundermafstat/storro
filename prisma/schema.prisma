@@ -20,6 +20,7 @@ enum ProjectStatus {
 
 enum SourceType {
   MANUAL_NOTE
+  FILE_UPLOAD
   CHATGPT_NOTE
   CHATGPT_EXPORT
   GIT_DIFF
@@ -298,6 +299,7 @@ model SourceDocument {
   rawText     String?
   rawObjectKey String?
   metadata    Json?
+  tags        String[]     @default([])
   isPrivate   Boolean      @default(false)
   sourceCreatedAt DateTime?
   parsedAt    DateTime?
@@ -314,6 +316,7 @@ model SourceDocument {
 
   @@index([orgId, projectId, sourceType])
   @@index([orgId, projectId, status])
+  @@index([orgId, projectId, isPrivate, createdAt])
   @@index([projectId, createdAt])
 }
 
