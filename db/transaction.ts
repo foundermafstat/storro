@@ -13,6 +13,7 @@ type PrismaClientLike = Pick<
   | "project"
   | "sourceConnection"
   | "sourceDocument"
+  | "sourceFile"
   | "storyArtifact"
   | "storyRun"
   | "usageEvent"
