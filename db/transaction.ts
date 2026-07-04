@@ -21,6 +21,7 @@ type PrismaClientLike = Pick<
   | "storyArtifact"
   | "storyRun"
   | "usageEvent"
+  | "webhookDelivery"
   | "membership"
   | "normalizedSource"
   | "normalizedSourceChunk"
