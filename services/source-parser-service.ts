@@ -307,12 +307,13 @@ function requireRawText(input: SourceParserInput) {
 
 function buildTextWarnings(text: string) {
   const warnings: string[] = [];
+  const textWithoutRedactionMarkers = text.replace(/\[REDACTED_[^\]]+\]/g, "");
 
   if (text.length < 20) {
     warnings.push("Source text is very short.");
   }
 
-  if (/secret|api[_-]?key|password/i.test(text)) {
+  if (/secret|api[_-]?key|password/i.test(textWithoutRedactionMarkers)) {
     warnings.push("Potential sensitive token language detected before redaction.");
   }
 
