@@ -13,7 +13,7 @@ import { getApprovedFactsForGeneration } from "@/services/extraction-review-serv
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
 import { getTemplateDefinition } from "@/services/template-service";
 
-const storyPlanSchema = z.object({
+export const storyPlanSchema = z.object({
   titleOptions: z.array(z.string()).min(1),
   hook: z.string(),
   audience: z.string(),
