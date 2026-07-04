@@ -11,6 +11,7 @@ import { assertProjectPermission } from "@/services/authorization-service";
 import { ValidationServiceError } from "@/services/errors";
 import { getApprovedFactsForGeneration } from "@/services/extraction-review-service";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
+import { getTemplateDefinition } from "@/services/template-service";
 
 const storyPlanSchema = z.object({
   titleOptions: z.array(z.string()).min(1),
@@ -71,11 +72,29 @@ export async function generateStoryPlan(
   requireScopedContext(context);
   await assertProjectPermission(context, input.projectId, "artifact.write", db);
 
+  const template = await getTemplateDefinition(
+    context,
+    {
+      projectId: input.projectId,
+      templateId: input.templateId,
+    },
+    db,
+  );
+
+  if (template.format !== input.format) {
+    throw new ValidationServiceError("Template format does not match requested artifact format.", {
+      templateId: input.templateId,
+      templateFormat: template.format,
+      requestedFormat: input.format,
+    });
+  }
+
+  const publicOnly = input.publicOnly ?? template.privateFactPolicy === "PUBLIC_ONLY";
   const facts = await getApprovedFactsForGeneration(
     context,
     {
       projectId: input.projectId,
-      publicOnly: input.publicOnly ?? true,
+      publicOnly,
     },
     db,
   );
@@ -120,6 +139,16 @@ export async function generateStoryPlan(
               format: input.format,
               audience: input.audience,
               tone: input.tone,
+              template: {
+                id: template.id,
+                name: template.name,
+                audience: template.audience,
+                tone: template.tone,
+                requiredSections: template.requiredSections,
+                lengthLimits: template.lengthLimits,
+                privateFactPolicy: template.privateFactPolicy,
+                groundingRules: template.groundingRules,
+              },
               facts: facts.map((fact) => ({
                 id: fact.id,
                 category: fact.category,

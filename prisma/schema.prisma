@@ -73,6 +73,12 @@ enum ArtifactFormat {
   CUSTOM
 }
 
+enum TemplatePrivateFactPolicy {
+  PUBLIC_ONLY
+  INTERNAL_ALLOWED
+  PRIVATE_ALLOWED
+}
+
 enum ArtifactStatus {
   DRAFT
   REVIEW_REQUIRED
@@ -165,30 +171,31 @@ enum WebhookStatus {
 }
 
 model User {
-  id             String    @id @default(uuid())
-  authUserId     String    @unique
-  email          String?   @unique
-  name           String?
-  imageUrl       String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id         String   @id @default(uuid())
+  authUserId String   @unique
+  email      String?  @unique
+  name       String?
+  imageUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  memberships     Membership[]
-  createdProjects Project[]        @relation("ProjectOwner")
-  createdSources  SourceDocument[] @relation("SourceCreator")
-  editorRevisions EditorRevision[]
-  usageEvents     UsageEvent[]
-  auditLogs       AuditLog[]
+  memberships      Membership[]
+  createdProjects  Project[]              @relation("ProjectOwner")
+  createdSources   SourceDocument[]       @relation("SourceCreator")
+  editorRevisions  EditorRevision[]
+  usageEvents      UsageEvent[]
+  auditLogs        AuditLog[]
+  createdTemplates OrganizationTemplate[] @relation("TemplateCreator")
 
   @@index([email])
 }
 
 model Organization {
-  id           String   @id @default(uuid())
-  name         String
-  slug         String   @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   memberships         Membership[]
   projects            Project[]
@@ -202,6 +209,7 @@ model Organization {
   extractionFacts     ExtractionFact[]
   storyRuns           StoryRun[]
   storyArtifacts      StoryArtifact[]
+  templates           OrganizationTemplate[]
   editorRevisions     EditorRevision[]
   artifactExports     ArtifactExport[]
   jobs                Job[]
@@ -216,12 +224,12 @@ model Organization {
 }
 
 model Membership {
-  id             String         @id @default(uuid())
-  userId         String
-  orgId          String
-  role           MembershipRole
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id        String         @id @default(uuid())
+  userId    String
+  orgId     String
+  role      MembershipRole
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -244,8 +252,8 @@ model Project {
   updatedAt   DateTime      @updatedAt
   archivedAt  DateTime?
 
-  organization      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  owner             User               @relation("ProjectOwner", fields: [ownerId], references: [id])
+  organization      Organization            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner             User                    @relation("ProjectOwner", fields: [ownerId], references: [id])
   sourceDocuments   SourceDocument[]
   sourceFiles       SourceFile[]
   sourceConnections SourceConnection[]
@@ -268,18 +276,18 @@ model Project {
 }
 
 model SourceConnection {
-  id               String            @id @default(uuid())
-  orgId            String
-  projectId        String?
-  provider         IntegrationProvider
-  status           IntegrationStatus @default(PENDING)
-  externalId       String?
-  displayName      String?
-  encryptedToken   String?
-  metadata         Json?
-  lastSyncedAt     DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id             String              @id @default(uuid())
+  orgId          String
+  projectId      String?
+  provider       IntegrationProvider
+  status         IntegrationStatus   @default(PENDING)
+  externalId     String?
+  displayName    String?
+  encryptedToken String?
+  metadata       Json?
+  lastSyncedAt   DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -289,23 +297,23 @@ model SourceConnection {
 }
 
 model SourceDocument {
-  id          String       @id @default(uuid())
-  orgId       String
-  projectId   String
-  createdById String?
-  sourceType  SourceType
-  status      SourceStatus @default(CREATED)
-  title       String
-  rawText     String?
-  rawObjectKey String?
-  metadata    Json?
-  tags        String[]     @default([])
-  isPrivate   Boolean      @default(false)
+  id              String       @id @default(uuid())
+  orgId           String
+  projectId       String
+  createdById     String?
+  sourceType      SourceType
+  status          SourceStatus @default(CREATED)
+  title           String
+  rawText         String?
+  rawObjectKey    String?
+  metadata        Json?
+  tags            String[]     @default([])
+  isPrivate       Boolean      @default(false)
   sourceCreatedAt DateTime?
-  parsedAt    DateTime?
-  deletedAt   DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  parsedAt        DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   organization      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -410,22 +418,22 @@ model RedactionReport {
 }
 
 model ExtractionRun {
-  id             String    @id @default(uuid())
-  orgId          String
-  projectId      String
-  createdById    String?
-  status         RunStatus @default(QUEUED)
+  id                String    @id @default(uuid())
+  orgId             String
+  projectId         String
+  createdById       String?
+  status            RunStatus @default(QUEUED)
   selectedSourceIds String[]
-  model          String?
-  promptVersion  String?
-  projectSummary String?
-  missingContext Json?
-  riskFlags      Json?
-  errorMessage   String?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  model             String?
+  promptVersion     String?
+  projectSummary    String?
+  missingContext    Json?
+  riskFlags         Json?
+  errorMessage      String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -490,21 +498,49 @@ model StoryRun {
   @@index([extractionRunId])
 }
 
+model OrganizationTemplate {
+  id                String                    @id @default(uuid())
+  orgId             String
+  createdById       String?
+  templateId        String
+  name              String
+  description       String?
+  format            ArtifactFormat
+  audience          String
+  tone              String
+  requiredSections  String[]
+  lengthLimits      Json
+  privateFactPolicy TemplatePrivateFactPolicy
+  groundingRules    Json
+  minimumPlan       String                    @default("team")
+  metadata          Json?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  archivedAt        DateTime?
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("TemplateCreator", fields: [createdById], references: [id])
+
+  @@unique([orgId, templateId])
+  @@index([orgId, format, archivedAt])
+  @@index([minimumPlan])
+}
+
 model StoryArtifact {
-  id              String          @id @default(uuid())
+  id              String         @id @default(uuid())
   orgId           String
   projectId       String
   storyRunId      String
   format          ArtifactFormat
-  status          ArtifactStatus  @default(DRAFT)
+  status          ArtifactStatus @default(DRAFT)
   title           String
   contentMarkdown String
   model           String?
   promptVersion   String?
-  groundingState  GroundingState  @default(NOT_REVIEWED)
+  groundingState  GroundingState @default(NOT_REVIEWED)
   metadata        Json?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   archivedAt      DateTime?
 
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -529,10 +565,10 @@ model EditorRevision {
   groundingState  GroundingState @default(NOT_REVIEWED)
   createdAt       DateTime       @default(now())
 
-  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  artifact     StoryArtifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
-  author       User?         @relation(fields: [authorId], references: [id])
+  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  artifact     StoryArtifact    @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  author       User?            @relation(fields: [authorId], references: [id])
   exports      ArtifactExport[]
 
   @@index([artifactId, createdAt])
@@ -540,16 +576,16 @@ model EditorRevision {
 }
 
 model ArtifactExport {
-  id          String         @id @default(uuid())
-  orgId       String
-  projectId   String
-  artifactId  String
-  revisionId  String?
-  format      ArtifactFormat
-  status      ArtifactStatus @default(EXPORTED)
-  objectKey   String?
-  metadata    Json?
-  createdAt   DateTime       @default(now())
+  id         String         @id @default(uuid())
+  orgId      String
+  projectId  String
+  artifactId String
+  revisionId String?
+  format     ArtifactFormat
+  status     ArtifactStatus @default(EXPORTED)
+  objectKey  String?
+  metadata   Json?
+  createdAt  DateTime       @default(now())
 
   organization Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -561,20 +597,20 @@ model ArtifactExport {
 }
 
 model Job {
-  id          String    @id @default(uuid())
-  orgId       String
-  projectId   String?
-  type        JobType
-  status      JobStatus @default(QUEUED)
-  queueName   String
-  payload     Json
-  result      Json?
-  error       String?
-  attempts    Int       @default(0)
-  runAfter    DateTime?
-  lockedAt    DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String    @id @default(uuid())
+  orgId     String
+  projectId String?
+  type      JobType
+  status    JobStatus @default(QUEUED)
+  queueName String
+  payload   Json
+  result    Json?
+  error     String?
+  attempts  Int       @default(0)
+  runAfter  DateTime?
+  lockedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -624,22 +660,22 @@ model AuditLog {
 }
 
 model IntegrationAccount {
-  id             String            @id @default(uuid())
+  id             String              @id @default(uuid())
   orgId          String
   provider       IntegrationProvider
-  status         IntegrationStatus @default(PENDING)
+  status         IntegrationStatus   @default(PENDING)
   externalId     String?
   displayName    String?
   encryptedToken String?
   metadata       Json?
   lastSyncedAt   DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  @@index([orgId, provider, status])
   @@unique([orgId, provider, externalId])
+  @@index([orgId, provider, status])
 }
 
 model GithubInstallation {
@@ -681,18 +717,18 @@ model BillingAccount {
 }
 
 model WebhookDelivery {
-  id             String          @id @default(uuid())
-  orgId          String?
-  provider       WebhookProvider
-  deliveryId     String
-  eventType      String
-  status         WebhookStatus   @default(RECEIVED)
-  signatureValid Boolean         @default(false)
+  id               String          @id @default(uuid())
+  orgId            String?
+  provider         WebhookProvider
+  deliveryId       String
+  eventType        String
+  status           WebhookStatus   @default(RECEIVED)
+  signatureValid   Boolean         @default(false)
   payloadObjectKey String?
-  payload        Json?
-  error          String?
-  processedAt    DateTime?
-  createdAt      DateTime        @default(now())
+  payload          Json?
+  error            String?
+  processedAt      DateTime?
+  createdAt        DateTime        @default(now())
 
   organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
 

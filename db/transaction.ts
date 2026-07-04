@@ -7,6 +7,7 @@ type PrismaClientLike = Pick<
   typeof prisma,
   | "$transaction"
   | "artifactExport"
+  | "billingAccount"
   | "editorRevision"
   | "extractionFact"
   | "extractionRun"
@@ -24,6 +25,7 @@ type PrismaClientLike = Pick<
   | "normalizedSourceChunk"
   | "auditLog"
   | "organization"
+  | "organizationTemplate"
   | "user"
 >;
 

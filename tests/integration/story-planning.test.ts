@@ -227,7 +227,7 @@ describe("story planning service", () => {
       context,
       {
         projectId,
-        templateId: "internal",
+        templateId: "internal-changelog",
         format: "INTERNAL_CHANGELOG",
         publicOnly: false,
       },
@@ -260,8 +260,8 @@ describe("story planning service", () => {
         context,
         {
           projectId,
-          templateId: "public",
-          format: "LINKEDIN_POST",
+          templateId: "dorahacks-progress",
+          format: "DORAHACKS_UPDATE",
           publicOnly: true,
         },
         providerWithPlan(
