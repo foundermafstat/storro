@@ -3,6 +3,7 @@ import { prisma } from "@/db/client";
 import type { DatabaseClient } from "@/db/transaction";
 import { assertSourcePermission } from "@/services/authorization-service";
 import { NotFoundError, ValidationServiceError } from "@/services/errors";
+import { formatGitEvidenceSummary, parseGitEvidence } from "@/services/git-evidence-parser";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
 
 export type ParsedSection = {
@@ -38,8 +39,6 @@ export type SourceParser = {
 const textSourceTypes: SourceType[] = [
   "MANUAL_NOTE",
   "CHATGPT_NOTE",
-  "GIT_DIFF",
-  "COMMIT_LOG",
   "GITHUB_COMMIT",
   "GITHUB_PULL_REQUEST",
   "GITHUB_RELEASE",
@@ -148,8 +147,30 @@ export const jsonParser: SourceParser = {
   },
 };
 
+export const gitEvidenceParser: SourceParser = {
+  id: "git-evidence",
+  sourceTypes: ["GIT_DIFF", "COMMIT_LOG"],
+  parse(input) {
+    const text = requireRawText(input);
+    const parsed = parseGitEvidence(text);
+
+    return {
+      text: formatGitEvidenceSummary(parsed),
+      metadata: {
+        parser: "git-evidence",
+        git: parsed,
+      },
+      warnings: parsed.warnings,
+      sections: [],
+      sourceCreatedAt: readSourceCreatedAt(input.metadata),
+      confidence: parsed.warnings.length > 0 ? 0.45 : 0.88,
+    };
+  },
+};
+
 export const defaultSourceParserRegistry = new SourceParserRegistry()
   .register(jsonParser)
+  .register(gitEvidenceParser)
   .register(fileTextParser)
   .register(plainTextParser);
 
