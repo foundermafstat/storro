@@ -1,6 +1,6 @@
 import { prisma } from "@/db/client";
 import type { DatabaseClient } from "@/db/transaction";
-import { assertMembership } from "@/services/membership-service";
+import { assertOrgPermission } from "@/services/authorization-service";
 import { recordAuditEvent } from "@/services/audit-service";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
 
@@ -15,7 +15,7 @@ export async function createManualSourceDocument(
   db: DatabaseClient = prisma,
 ) {
   requireScopedContext(context);
-  await assertMembership({ ...context, minimumRole: "EDITOR" }, db);
+  await assertOrgPermission(context, "source.write", db);
 
   const project = await db.project.findFirst({
     where: {

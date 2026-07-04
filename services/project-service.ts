@@ -1,12 +1,15 @@
 import { prisma } from "@/db/client";
 import type { DatabaseClient } from "@/db/transaction";
-import { assertMembership } from "@/services/membership-service";
+import {
+  assertOrgPermission,
+  assertProjectPermission,
+} from "@/services/authorization-service";
 import { recordAuditEvent } from "@/services/audit-service";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
 
 export async function listProjects(context: ScopedContext, db: DatabaseClient = prisma) {
   requireScopedContext(context);
-  await assertMembership(context, db);
+  await assertOrgPermission(context, "project.read", db);
 
   return db.project.findMany({
     where: {
@@ -25,7 +28,7 @@ export async function getProjectById(
   db: DatabaseClient = prisma,
 ) {
   requireScopedContext(context);
-  await assertMembership(context, db);
+  await assertOrgPermission(context, "project.read", db);
 
   return db.project.findFirst({
     where: {
@@ -46,7 +49,7 @@ export async function createProject(
   db: DatabaseClient = prisma,
 ) {
   requireScopedContext(context);
-  await assertMembership({ ...context, minimumRole: "EDITOR" }, db);
+  await assertOrgPermission(context, "project.write", db);
 
   const project = await db.project.create({
     data: {
@@ -79,7 +82,7 @@ export async function archiveProject(
   db: DatabaseClient = prisma,
 ) {
   requireScopedContext(context);
-  await assertMembership({ ...context, minimumRole: "ADMIN" }, db);
+  await assertProjectPermission(context, projectId, "project.archive", db);
 
   const project = await db.project.update({
     where: {
