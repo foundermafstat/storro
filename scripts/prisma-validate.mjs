@@ -8,7 +8,7 @@ if (!existsSync(schemaPath)) {
   process.exit(0);
 }
 
-const result = spawnSync("npx", ["prisma", "validate", "--schema", schemaPath], {
+const result = spawnSync("npx", ["prisma", "validate"], {
   stdio: "inherit",
 });
 

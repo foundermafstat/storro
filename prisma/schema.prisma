@@ -1,0 +1,701 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum SourceType {
+  MANUAL_NOTE
+  CHATGPT_NOTE
+  CHATGPT_EXPORT
+  GIT_DIFF
+  COMMIT_LOG
+  GITHUB_COMMIT
+  GITHUB_PULL_REQUEST
+  GITHUB_RELEASE
+  CODEX_NOTE
+  CLI_SNAPSHOT
+  MCP_NOTE
+  WEBHOOK_EVENT
+}
+
+enum SourceStatus {
+  CREATED
+  UPLOADED
+  PARSED
+  NORMALIZED
+  REDACTED
+  BLOCKED
+  FAILED
+  DELETED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  NEEDS_REVIEW
+  COMPLETED
+  FAILED
+  CANCELLED
+  BLOCKED
+}
+
+enum ArtifactFormat {
+  LONG_ARTICLE
+  DORAHACKS_UPDATE
+  GITHUB_RELEASE_NOTES
+  LINKEDIN_POST
+  X_THREAD
+  DAILY_BUILD_JOURNAL
+  INVESTOR_UPDATE
+  INTERNAL_CHANGELOG
+  CUSTOM
+}
+
+enum ArtifactStatus {
+  DRAFT
+  REVIEW_REQUIRED
+  EXPORT_READY
+  EXPORTED
+  BLOCKED
+  ARCHIVED
+}
+
+enum GroundingState {
+  NOT_REVIEWED
+  PASSED
+  WARNINGS
+  FAILED
+  OVERRIDDEN
+}
+
+enum IntegrationProvider {
+  GITHUB
+  CHATGPT
+  CODEX
+  CLI
+  MCP
+  CLERK
+  STRIPE
+  OPENAI
+  OBJECT_STORAGE
+}
+
+enum IntegrationStatus {
+  PENDING
+  CONNECTED
+  ERROR
+  DISCONNECTED
+}
+
+enum JobType {
+  SOURCE_PARSE
+  SOURCE_NORMALIZE
+  REDACTION
+  EXTRACTION
+  STORY_PLAN
+  STORY_GENERATION
+  GROUNDING_REVIEW
+  EXPORT
+  GITHUB_SYNC
+  WEBHOOK_PROCESS
+  BILLING_RECONCILE
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  RETRYING
+}
+
+enum UsageEventType {
+  SOURCE_CREATED
+  FILE_UPLOADED
+  AI_EXTRACTION
+  AI_GENERATION
+  ARTIFACT_EXPORTED
+  GITHUB_SYNC
+  STORAGE_BYTES
+}
+
+enum BillingStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  NONE
+}
+
+enum WebhookProvider {
+  GITHUB
+  CLERK
+  STRIPE
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+model User {
+  id             String    @id @default(uuid())
+  clerkUserId    String    @unique
+  email          String?   @unique
+  name           String?
+  imageUrl       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  memberships     Membership[]
+  createdProjects Project[]        @relation("ProjectOwner")
+  createdSources  SourceDocument[] @relation("SourceCreator")
+  editorRevisions EditorRevision[]
+  usageEvents     UsageEvent[]
+  auditLogs       AuditLog[]
+
+  @@index([email])
+}
+
+model Organization {
+  id           String   @id @default(uuid())
+  clerkOrgId   String?  @unique
+  name         String
+  slug         String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships         Membership[]
+  projects            Project[]
+  sourceDocuments     SourceDocument[]
+  sourceFiles         SourceFile[]
+  sourceConnections   SourceConnection[]
+  normalizedSources   NormalizedSource[]
+  normalizedChunks    NormalizedSourceChunk[]
+  redactionReports    RedactionReport[]
+  extractionRuns      ExtractionRun[]
+  extractionFacts     ExtractionFact[]
+  storyRuns           StoryRun[]
+  storyArtifacts      StoryArtifact[]
+  editorRevisions     EditorRevision[]
+  artifactExports     ArtifactExport[]
+  jobs                Job[]
+  usageEvents         UsageEvent[]
+  auditLogs           AuditLog[]
+  integrationAccounts IntegrationAccount[]
+  githubInstallations GithubInstallation[]
+  billingAccount      BillingAccount?
+  webhookDeliveries   WebhookDelivery[]
+
+  @@index([slug])
+}
+
+model Membership {
+  id             String         @id @default(uuid())
+  userId         String
+  orgId          String
+  role           MembershipRole
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId, role])
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  orgId       String
+  ownerId     String
+  name        String
+  slug        String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  tags        String[]
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  archivedAt  DateTime?
+
+  organization      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner             User               @relation("ProjectOwner", fields: [ownerId], references: [id])
+  sourceDocuments   SourceDocument[]
+  sourceFiles       SourceFile[]
+  sourceConnections SourceConnection[]
+  normalizedSources NormalizedSource[]
+  normalizedChunks  NormalizedSourceChunk[]
+  redactionReports  RedactionReport[]
+  extractionRuns    ExtractionRun[]
+  extractionFacts   ExtractionFact[]
+  storyRuns         StoryRun[]
+  storyArtifacts    StoryArtifact[]
+  editorRevisions   EditorRevision[]
+  artifactExports   ArtifactExport[]
+  jobs              Job[]
+  usageEvents       UsageEvent[]
+  auditLogs         AuditLog[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, status, updatedAt])
+  @@index([ownerId])
+}
+
+model SourceConnection {
+  id               String            @id @default(uuid())
+  orgId            String
+  projectId        String?
+  provider         IntegrationProvider
+  status           IntegrationStatus @default(PENDING)
+  externalId       String?
+  displayName      String?
+  encryptedToken   String?
+  metadata         Json?
+  lastSyncedAt     DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, provider, status])
+  @@index([projectId, provider])
+}
+
+model SourceDocument {
+  id          String       @id @default(uuid())
+  orgId       String
+  projectId   String
+  createdById String?
+  sourceType  SourceType
+  status      SourceStatus @default(CREATED)
+  title       String
+  rawText     String?
+  rawObjectKey String?
+  metadata    Json?
+  isPrivate   Boolean      @default(false)
+  sourceCreatedAt DateTime?
+  parsedAt    DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  organization      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy         User?              @relation("SourceCreator", fields: [createdById], references: [id])
+  files             SourceFile[]
+  normalizedSources NormalizedSource[]
+  redactionReports  RedactionReport[]
+
+  @@index([orgId, projectId, sourceType])
+  @@index([orgId, projectId, status])
+  @@index([projectId, createdAt])
+}
+
+model SourceFile {
+  id               String   @id @default(uuid())
+  orgId            String
+  projectId        String
+  sourceDocumentId String
+  objectKey        String
+  fileName         String
+  mimeType         String
+  sizeBytes        BigInt
+  checksumSha256   String
+  storageProvider  String
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  organization   Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, objectKey])
+  @@index([projectId, sourceDocumentId])
+  @@index([checksumSha256])
+}
+
+model NormalizedSource {
+  id               String     @id @default(uuid())
+  orgId            String
+  projectId        String
+  sourceDocumentId String
+  sourceType       SourceType
+  title            String
+  body             String
+  metadata         Json?
+  rankingScore     Float      @default(0)
+  isPrivate        Boolean    @default(false)
+  sourceCreatedAt  DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  organization     Organization            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceDocument   SourceDocument          @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  chunks           NormalizedSourceChunk[]
+  redactionReports RedactionReport[]
+
+  @@index([orgId, projectId, sourceType])
+  @@index([projectId, rankingScore])
+}
+
+model NormalizedSourceChunk {
+  id                 String   @id @default(uuid())
+  orgId              String
+  projectId          String
+  normalizedSourceId String
+  chunkIndex         Int
+  body               String
+  tokenEstimate      Int?
+  summary            String?
+  metadata           Json?
+  createdAt          DateTime @default(now())
+
+  organization     Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  normalizedSource NormalizedSource @relation(fields: [normalizedSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([normalizedSourceId, chunkIndex])
+  @@index([orgId, projectId])
+}
+
+model RedactionReport {
+  id                 String   @id @default(uuid())
+  orgId              String
+  projectId          String
+  sourceDocumentId   String
+  normalizedSourceId String?
+  blocked            Boolean  @default(false)
+  findings           Json
+  redactedText       String?
+  redactedObjectKey  String?
+  createdAt          DateTime @default(now())
+
+  organization     Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceDocument   SourceDocument    @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  normalizedSource NormalizedSource? @relation(fields: [normalizedSourceId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, projectId, blocked])
+  @@index([sourceDocumentId])
+}
+
+model ExtractionRun {
+  id             String    @id @default(uuid())
+  orgId          String
+  projectId      String
+  createdById    String?
+  status         RunStatus @default(QUEUED)
+  selectedSourceIds String[]
+  model          String?
+  promptVersion  String?
+  projectSummary String?
+  missingContext Json?
+  riskFlags      Json?
+  errorMessage   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  facts        ExtractionFact[]
+  storyRuns    StoryRun[]
+
+  @@index([orgId, projectId, status])
+  @@index([projectId, createdAt])
+}
+
+model ExtractionFact {
+  id              String       @id @default(uuid())
+  orgId           String
+  projectId       String
+  extractionRunId String
+  category        String
+  text            String
+  sourceIds       String[]
+  filePaths       String[]
+  confidence      Float
+  isPrivate       Boolean      @default(false)
+  reviewStatus    ReviewStatus @default(PENDING)
+  reasoningNote   String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  organization  Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  extractionRun ExtractionRun @relation(fields: [extractionRunId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, projectId, category])
+  @@index([extractionRunId, reviewStatus])
+  @@index([projectId, isPrivate])
+}
+
+model StoryRun {
+  id              String         @id @default(uuid())
+  orgId           String
+  projectId       String
+  extractionRunId String
+  createdById     String?
+  status          RunStatus      @default(QUEUED)
+  templateId      String
+  format          ArtifactFormat
+  audience        String?
+  tone            String?
+  model           String?
+  promptVersion   String?
+  storyPlan       Json?
+  errorMessage    String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  organization  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  extractionRun ExtractionRun   @relation(fields: [extractionRunId], references: [id], onDelete: Cascade)
+  artifacts     StoryArtifact[]
+
+  @@index([orgId, projectId, status])
+  @@index([extractionRunId])
+}
+
+model StoryArtifact {
+  id              String          @id @default(uuid())
+  orgId           String
+  projectId       String
+  storyRunId      String
+  format          ArtifactFormat
+  status          ArtifactStatus  @default(DRAFT)
+  title           String
+  contentMarkdown String
+  model           String?
+  promptVersion   String?
+  groundingState  GroundingState  @default(NOT_REVIEWED)
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  archivedAt      DateTime?
+
+  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  storyRun     StoryRun         @relation(fields: [storyRunId], references: [id], onDelete: Cascade)
+  revisions    EditorRevision[]
+  exports      ArtifactExport[]
+
+  @@index([orgId, projectId, format])
+  @@index([storyRunId])
+  @@index([projectId, status])
+}
+
+model EditorRevision {
+  id              String         @id @default(uuid())
+  orgId           String
+  projectId       String
+  artifactId      String
+  authorId        String?
+  contentMarkdown String
+  contentHash     String
+  groundingState  GroundingState @default(NOT_REVIEWED)
+  createdAt       DateTime       @default(now())
+
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  artifact     StoryArtifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  author       User?         @relation(fields: [authorId], references: [id])
+  exports      ArtifactExport[]
+
+  @@index([artifactId, createdAt])
+  @@index([orgId, projectId])
+}
+
+model ArtifactExport {
+  id          String         @id @default(uuid())
+  orgId       String
+  projectId   String
+  artifactId  String
+  revisionId  String?
+  format      ArtifactFormat
+  status      ArtifactStatus @default(EXPORTED)
+  objectKey   String?
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  organization Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  artifact     StoryArtifact   @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  revision     EditorRevision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, projectId, format])
+  @@index([artifactId, createdAt])
+}
+
+model Job {
+  id          String    @id @default(uuid())
+  orgId       String
+  projectId   String?
+  type        JobType
+  status      JobStatus @default(QUEUED)
+  queueName   String
+  payload     Json
+  result      Json?
+  error       String?
+  attempts    Int       @default(0)
+  runAfter    DateTime?
+  lockedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([orgId, projectId, type])
+  @@index([queueName, status])
+}
+
+model UsageEvent {
+  id        String         @id @default(uuid())
+  orgId     String
+  projectId String?
+  userId    String?
+  type      UsageEventType
+  quantity  Int            @default(1)
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, type, createdAt])
+  @@index([projectId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  orgId      String
+  projectId  String?
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, action, createdAt])
+  @@index([entityType, entityId])
+}
+
+model IntegrationAccount {
+  id             String            @id @default(uuid())
+  orgId          String
+  provider       IntegrationProvider
+  status         IntegrationStatus @default(PENDING)
+  externalId     String?
+  displayName    String?
+  encryptedToken String?
+  metadata       Json?
+  lastSyncedAt   DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, provider, status])
+  @@unique([orgId, provider, externalId])
+}
+
+model GithubInstallation {
+  id             String            @id @default(uuid())
+  orgId          String
+  installationId String            @unique
+  accountLogin   String
+  accountType    String
+  status         IntegrationStatus @default(CONNECTED)
+  permissions    Json?
+  repositories   Json?
+  lastSyncedAt   DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, status])
+  @@index([accountLogin])
+}
+
+model BillingAccount {
+  id                   String        @id @default(uuid())
+  orgId                String        @unique
+  stripeCustomerId     String?       @unique
+  stripeSubscriptionId String?       @unique
+  status               BillingStatus @default(NONE)
+  plan                 String        @default("free")
+  currentPeriodEnd     DateTime?
+  trialEndsAt          DateTime?
+  seatLimit            Int           @default(1)
+  metadata             Json?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([status, plan])
+}
+
+model WebhookDelivery {
+  id             String          @id @default(uuid())
+  orgId          String?
+  provider       WebhookProvider
+  deliveryId     String
+  eventType      String
+  status         WebhookStatus   @default(RECEIVED)
+  signatureValid Boolean         @default(false)
+  payloadObjectKey String?
+  payload        Json?
+  error          String?
+  processedAt    DateTime?
+  createdAt      DateTime        @default(now())
+
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, deliveryId])
+  @@index([provider, eventType, createdAt])
+  @@index([orgId, status])
+}
