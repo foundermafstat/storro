@@ -5,6 +5,7 @@ export type DatabaseClient = PrismaClientLike | Prisma.TransactionClient;
 
 type PrismaClientLike = Pick<
   typeof prisma,
+  | "$queryRaw"
   | "$transaction"
   | "artifactExport"
   | "billingAccount"
