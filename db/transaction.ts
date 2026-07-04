@@ -6,8 +6,16 @@ export type DatabaseClient = PrismaClientLike | Prisma.TransactionClient;
 type PrismaClientLike = Pick<
   typeof prisma,
   | "$transaction"
+  | "artifactExport"
+  | "editorRevision"
+  | "extractionRun"
+  | "job"
   | "project"
+  | "sourceConnection"
   | "sourceDocument"
+  | "storyArtifact"
+  | "storyRun"
+  | "usageEvent"
   | "membership"
   | "auditLog"
   | "organization"

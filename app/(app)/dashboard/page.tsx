@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCurrentAuthContext } from "@/server/auth-context";
 import { listProjects } from "@/services/project-service";
 
@@ -18,8 +19,16 @@ export default async function DashboardPage() {
           <ul className="divide-y divide-[color:var(--border)]">
             {projects.map((project) => (
               <li className="p-5" key={project.id}>
-                <h2 className="font-medium">{project.name}</h2>
+                <Link
+                  className="font-medium hover:text-[color:var(--accent)] focus-visible:rounded-sm"
+                  href={`/dashboard/projects/${project.id}`}
+                >
+                  {project.name}
+                </Link>
                 <p className="mt-1 text-sm text-[color:var(--muted)]">{project.description}</p>
+                {project.tags.length > 0 ? (
+                  <p className="mt-2 text-xs uppercase text-[color:var(--muted)]">{project.tags.join(" / ")}</p>
+                ) : null}
               </li>
             ))}
           </ul>
