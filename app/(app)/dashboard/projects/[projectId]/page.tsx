@@ -139,6 +139,21 @@ export default async function ProjectDetailPage({
         ))}
       </section>
 
+      <section className="mt-4 grid gap-3 md:grid-cols-3">
+        {summary.integrations.map((integration) => (
+          <article className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4" key={integration.provider}>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium">{integration.label}</p>
+              <Badge variant={integration.connected ? "success" : "neutral"}>{integration.connected ? "Connected" : "Open"}</Badge>
+            </div>
+            <p className="mt-2 text-sm text-[color:var(--muted)]">{integration.detail}</p>
+            {integration.updatedAt ? (
+              <p className="mt-2 text-xs text-[color:var(--muted)]">Updated {new Date(integration.updatedAt).toLocaleString()}</p>
+            ) : null}
+          </article>
+        ))}
+      </section>
+
       <section className="mt-8 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
         <div className="border-b border-[color:var(--border)] p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

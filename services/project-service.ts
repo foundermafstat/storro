@@ -298,7 +298,8 @@ export async function getProjectDashboardSummary(
     sourceCount,
     extractionCount,
     artifactCount,
-    integrationCount,
+    sourceConnections,
+    chatGptAccounts,
     recentJobs,
     usageAggregate,
   ] = await Promise.all([
@@ -322,10 +323,35 @@ export async function getProjectDashboardSummary(
         archivedAt: null,
       },
     }),
-    db.sourceConnection.count({
+    db.sourceConnection.findMany({
       where: {
         orgId: context.orgId,
         projectId,
+      },
+      select: {
+        provider: true,
+        status: true,
+        displayName: true,
+        lastSyncedAt: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    }),
+    db.integrationAccount.findMany({
+      where: {
+        orgId: context.orgId,
+        provider: "CHATGPT",
+        status: "CONNECTED",
+      },
+      select: {
+        provider: true,
+        status: true,
+        displayName: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
       },
     }),
     db.job.findMany({
@@ -357,16 +383,45 @@ export async function getProjectDashboardSummary(
       },
     }),
   ]);
+  const githubConnections = sourceConnections.filter((connection) => connection.provider === "GITHUB");
+  const codexConnection = sourceConnections.find((connection) => connection.provider === "CODEX");
+  const chatGptAccount = chatGptAccounts[0];
 
   return {
     cards: {
       sources: sourceCount,
       extractions: extractionCount,
       artifacts: artifactCount,
-      integrations: integrationCount,
+      integrations: sourceConnections.length + chatGptAccounts.length,
       recentJobs: recentJobs.length,
       usage: usageAggregate._sum.quantity ?? 0,
     },
+    integrations: [
+      {
+        provider: "CHATGPT",
+        label: "ChatGPT App",
+        connected: Boolean(chatGptAccount),
+        status: chatGptAccount?.status ?? "DISCONNECTED",
+        detail: chatGptAccount?.displayName ?? "Project MCP connector",
+        updatedAt: chatGptAccount?.updatedAt.toISOString() ?? null,
+      },
+      {
+        provider: "GITHUB",
+        label: "GitHub",
+        connected: githubConnections.length > 0,
+        status: githubConnections[0]?.status ?? "DISCONNECTED",
+        detail: githubConnections.length > 0 ? `${githubConnections.length} repository connection${githubConnections.length === 1 ? "" : "s"}` : "No repository selected",
+        updatedAt: githubConnections[0]?.lastSyncedAt?.toISOString() ?? null,
+      },
+      {
+        provider: "CODEX",
+        label: "Codex MCP",
+        connected: Boolean(codexConnection),
+        status: codexConnection?.status ?? "DISCONNECTED",
+        detail: codexConnection?.displayName ?? "Project-scoped MCP connection",
+        updatedAt: codexConnection?.lastSyncedAt?.toISOString() ?? null,
+      },
+    ],
     recentJobs,
   };
 }
