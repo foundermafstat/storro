@@ -492,8 +492,8 @@ function codexTurnEvents(source: SourceDocument, metadata: JsonRecord | null, fa
     const occurredAt = readDate(turn.occurredAt) ?? fallbackDate;
     const prompt = readString(turn.prompt) ?? source.title;
     const responseSummary = readString(turn.responseSummary) ?? createSummary(source.rawText ?? source.title);
-    const decisions = readArray(turn.decisions).map((item) => readString(item)).filter(Boolean);
-    const fixes = readArray(turn.fixes).map((item) => readString(item)).filter(Boolean);
+    const decisions = readStringArray(turn.decisions);
+    const fixes = readStringArray(turn.fixes);
 
     events.push({
       id: `codex_turn:${source.id}`,
@@ -520,8 +520,10 @@ function codexTurnEvents(source: SourceDocument, metadata: JsonRecord | null, fa
     }
 
     const occurredAt = readDate(promptRecord?.occurredAt ?? evidence?.markedAt) ?? fallbackDate;
-    const decisions = readArray(evidence?.decisions).map((item) => readString(item)).filter(Boolean);
-    const fixes = readArray(evidence?.fixes).map((item) => readString(item)).filter(Boolean);
+    const decisions = readStringArray(evidence?.decisions);
+    const fixes = readStringArray(evidence?.fixes);
+    const branchNames = readStringArray(evidence?.branchNames);
+    const commitRange = readString(evidence?.commitRange);
 
     events.push({
       id: `codex_turn:${source.id}:prompt:${index + 1}`,
@@ -537,8 +539,8 @@ function codexTurnEvents(source: SourceDocument, metadata: JsonRecord | null, fa
         prompt,
         decisions,
         fixes,
-        branchNames: evidence?.branchNames,
-        commitRange: evidence?.commitRange,
+        branchNames,
+        commitRange,
       },
     });
   }
@@ -564,20 +566,25 @@ function githubCommitEvents(source: SourceDocument, metadata: JsonRecord | null,
   const stats = toRecord(commit.stats);
   const occurredAt = readDate(commit.committedAt ?? commit.authoredAt) ?? fallbackDate;
   const branch = readString(github?.selectedBranch) ?? readArray(github?.branches).map((item) => readString(item)).find(Boolean);
+  const commitStats = {
+    additions: readNumber(stats?.additions) ?? 0,
+    deletions: readNumber(stats?.deletions) ?? 0,
+    total: readNumber(stats?.total) ?? 0,
+  };
   const commitEvent: TimelineEvent = {
     id: `github_commit:${source.id}:${sha}`,
     entityType: "github_commit",
     entityId: source.id,
     eventType: "GITHUB_COMMIT",
     title: message.split("\n")[0] || source.title,
-    summary: createSummary(`${sha.slice(0, 7)} · ${files.length} files · +${readNumber(stats?.additions) ?? 0} -${readNumber(stats?.deletions) ?? 0}`),
+    summary: createSummary(`${sha.slice(0, 7)} · ${files.length} files · +${commitStats.additions} -${commitStats.deletions}`),
     sourceType: source.sourceType,
     isPrivate: source.isPrivate,
     occurredAt,
     metadata: {
       sha,
       branch,
-      stats,
+      stats: commitStats,
     },
   };
 
@@ -590,6 +597,10 @@ function githubCommitEvents(source: SourceDocument, metadata: JsonRecord | null,
       if (!item || !filename) {
         return [];
       }
+      const status = readString(item.status) ?? "changed";
+      const additions = readNumber(item.additions) ?? 0;
+      const deletions = readNumber(item.deletions) ?? 0;
+      const changes = readNumber(item.changes) ?? additions + deletions;
 
       return [{
         id: `github_file_change:${source.id}:${sha}:${index + 1}`,
@@ -597,7 +608,7 @@ function githubCommitEvents(source: SourceDocument, metadata: JsonRecord | null,
         entityId: source.id,
         eventType: "GITHUB_FILE_CHANGE",
         title: filename,
-        summary: `${readString(item.status) ?? "changed"} · +${readNumber(item.additions) ?? 0} -${readNumber(item.deletions) ?? 0}`,
+        summary: `${status} · +${additions} -${deletions}`,
         sourceType: source.sourceType,
         isPrivate: source.isPrivate,
         occurredAt,
@@ -605,10 +616,10 @@ function githubCommitEvents(source: SourceDocument, metadata: JsonRecord | null,
           sha,
           branch,
           filename,
-          status: item.status,
-          additions: item.additions,
-          deletions: item.deletions,
-          changes: item.changes,
+          status,
+          additions,
+          deletions,
+          changes,
         },
       } satisfies TimelineEvent];
     }),
@@ -672,6 +683,14 @@ function readArray(value: unknown): unknown[] {
 
 function readString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown) {
+  return readArray(value).flatMap((item) => {
+    const text = readString(item);
+
+    return text ? [text] : [];
+  });
 }
 
 function readNumber(value: unknown) {
