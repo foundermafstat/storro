@@ -111,8 +111,9 @@ export function ProjectWorkflowPanel({
   const [status, setStatus] = useState("");
 
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+  const normalizedChunkCount = sources.reduce((total, source) => total + source.chunkCount, 0);
   const runnableExtractionRunId =
-    queuedExtractionRunId ?? extractionRuns.find((run) => run.status === "QUEUED")?.id ?? null;
+    normalizedChunkCount > 0 ? queuedExtractionRunId ?? extractionRuns.find((run) => run.status === "QUEUED")?.id ?? null : null;
   const runnableGenerationJobId =
     queuedGenerationJobId ?? generationJobs.find((job) => job.status === "QUEUED")?.id ?? null;
   const selectedSourceCount = selectedSourceIds.size;
@@ -327,7 +328,7 @@ export function ProjectWorkflowPanel({
               </Button>
               <Button disabled={!runnableExtractionRunId || pendingAction?.startsWith("run-extraction")} onClick={runExtraction} size="sm" variant="secondary">
                 <Play className="size-4" aria-hidden="true" />
-                Run queued extraction
+                {normalizedChunkCount > 0 ? "Run queued extraction" : "Normalize first"}
               </Button>
             </div>
           </div>
