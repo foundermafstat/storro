@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
       ? `/dashboard/projects/${query.data.state}/integrations/github/pull-requests`
       : "/settings/integrations";
 
-    return NextResponse.redirect(new URL(redirectPath, url.origin));
+    const publicOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || url.origin;
+
+    return NextResponse.redirect(new URL(redirectPath, publicOrigin));
   } catch (error) {
     const normalized = normalizeApiError(error);
 
