@@ -3,51 +3,34 @@ import { createApiRoute } from "@/server/api/route-handler";
 import { getCurrentAuthContext } from "@/server/auth-context";
 import { createAiModelPolicy, OpenAiResponsesProvider } from "@/services/ai-gateway";
 import { ValidationServiceError } from "@/services/errors";
-import { generateTimelineStoryArtifact } from "@/services/timeline-service";
-
-const sourceTypeSchema = z.enum([
-  "MANUAL_NOTE",
-  "FILE_UPLOAD",
-  "CHATGPT_NOTE",
-  "CHATGPT_EXPORT",
-  "GIT_DIFF",
-  "COMMIT_LOG",
-  "GITHUB_COMMIT",
-  "GITHUB_PULL_REQUEST",
-  "GITHUB_RELEASE",
-  "CODEX_NOTE",
-  "CLI_SNAPSHOT",
-  "MCP_NOTE",
-  "WEBHOOK_EVENT",
-]);
+import { prepareStoryContext } from "@/services/story-workflow-service";
 
 const paramsSchema = z.object({
   projectId: z.string().uuid(),
 });
 
+const artifactFormatSchema = z.enum([
+  "LONG_ARTICLE",
+  "DORAHACKS_UPDATE",
+  "GITHUB_RELEASE_NOTES",
+  "LINKEDIN_POST",
+  "X_THREAD",
+  "DAILY_BUILD_JOURNAL",
+  "INVESTOR_UPDATE",
+  "INTERNAL_CHANGELOG",
+  "CUSTOM",
+]);
+
 const bodySchema = z
   .object({
-    title: z.string().min(1).max(200).optional(),
-    view: z.enum(["daily", "weekly"]).optional(),
+    selectedSourceIds: z.array(z.string().uuid()).optional(),
+    templateId: z.string().min(1).optional(),
+    format: artifactFormatSchema.optional(),
     mode: z.enum(["private_journal", "public_update"]).optional(),
-    sourceType: sourceTypeSchema.optional(),
     includePrivate: z.boolean().optional(),
     createdFrom: z.string().datetime().optional(),
     createdTo: z.string().datetime().optional(),
-    selectedEventIds: z.array(z.string().min(1)).optional(),
     limit: z.number().int().min(1).max(500).optional(),
-    format: z.enum([
-      "LONG_ARTICLE",
-      "DORAHACKS_UPDATE",
-      "GITHUB_RELEASE_NOTES",
-      "LINKEDIN_POST",
-      "X_THREAD",
-      "DAILY_BUILD_JOURNAL",
-      "INVESTOR_UPDATE",
-      "INTERNAL_CHANGELOG",
-      "CUSTOM",
-    ]).optional(),
-    promptVersion: z.string().optional(),
   })
   .transform((body) => ({
     ...body,
@@ -55,7 +38,7 @@ const bodySchema = z
     createdTo: body.createdTo ? new Date(body.createdTo) : undefined,
   }));
 
-const timelineGenerationEnvSchema = z.object({
+const storyWorkflowEnvSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL_EXTRACTION: z.string().min(1),
   OPENAI_MODEL_GENERATION: z.string().min(1),
@@ -67,15 +50,15 @@ export const POST = createApiRoute({
   handler: async ({ body, params, request }) => {
     const { projectId } = paramsSchema.parse(params);
     const context = await getCurrentAuthContext(request.headers.get("x-storro-org-id"));
-    const parsedEnv = timelineGenerationEnvSchema.safeParse(process.env);
+    const parsedEnv = storyWorkflowEnvSchema.safeParse(process.env);
 
     if (!parsedEnv.success) {
-      throw new ValidationServiceError("OpenAI timeline generation environment is not configured.", {
+      throw new ValidationServiceError("OpenAI story workflow environment is not configured.", {
         issues: parsedEnv.error.issues.map((issue) => issue.path.join(".")),
       });
     }
 
-    const result = await generateTimelineStoryArtifact(
+    return prepareStoryContext(
       context,
       {
         ...body,
@@ -84,7 +67,5 @@ export const POST = createApiRoute({
       new OpenAiResponsesProvider(parsedEnv.data.OPENAI_API_KEY),
       createAiModelPolicy(parsedEnv.data),
     );
-
-    return result;
   },
 });

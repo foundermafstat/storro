@@ -13,6 +13,7 @@ import { NotFoundError, ValidationServiceError } from "@/services/errors";
 import { notifyJobCompletion } from "@/services/notification-service";
 import { storyPlanSchema, type StoryPlan } from "@/services/story-planning-service";
 import { getTemplateDefinition, type TemplateDefinition } from "@/services/template-service";
+import { getProjectTimeline } from "@/services/timeline-service";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
 
 const generationJobPayloadSchema = z.object({
@@ -213,6 +214,7 @@ export async function generateArtifactFromStoryRun(
     db,
   );
   const facts = await loadGenerationFacts(context, input.projectId, plan, template, db);
+  const orderedTimelineEvents = await loadApprovedTimelineEvents(context, input.projectId, facts, template, db);
   const promptVersion = input.promptVersion ?? "artifact-generation.v1";
   const gatewayResult = await callAiGateway(
     context,
@@ -224,7 +226,7 @@ export async function generateArtifactFromStoryRun(
         {
           role: "system",
           content:
-            "Generate a polished markdown artifact only. Do not invent claims, metrics, integrations, dates, or outcomes. Preserve uncertainty and follow claimsToAvoid.",
+            "Generate a polished markdown artifact only. Build the narrative around the ordered timeline, cause and effect, and how decisions changed over time. Do not invent claims, metrics, integrations, dates, or outcomes. Preserve uncertainty and follow claimsToAvoid.",
         },
         {
           role: "user",
@@ -238,6 +240,7 @@ export async function generateArtifactFromStoryRun(
               confidence: fact.confidence,
               filePaths: fact.filePaths,
             })),
+            orderedTimelineEvents,
           }),
         },
       ],
@@ -370,6 +373,45 @@ async function loadGenerationFacts(
   }
 
   return facts;
+}
+
+async function loadApprovedTimelineEvents(
+  context: ScopedContext,
+  projectId: string,
+  facts: Awaited<ReturnType<typeof loadGenerationFacts>>,
+  template: TemplateDefinition,
+  db: DatabaseClient,
+) {
+  const approvedSourceIds = new Set(facts.flatMap((fact) => fact.sourceIds));
+
+  if (approvedSourceIds.size === 0) {
+    return [];
+  }
+
+  const timeline = await getProjectTimeline(
+    context,
+    {
+      projectId,
+      mode: template.privateFactPolicy === "PUBLIC_ONLY" ? "public_update" : "private_journal",
+      includePrivate: template.privateFactPolicy !== "PUBLIC_ONLY",
+      limit: 200,
+    },
+    db,
+  );
+
+  return timeline.events
+    .filter((event) => !event.sourceType || approvedSourceIds.has(event.entityId))
+    .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))
+    .slice(0, 80)
+    .map((event) => ({
+      id: event.id,
+      occurredAt: event.occurredAt,
+      eventType: event.eventType,
+      title: event.title,
+      summary: event.summary,
+      sourceType: event.sourceType,
+      isPrivate: event.isPrivate,
+    }));
 }
 
 function validateMarkdownOnly(markdown: string) {

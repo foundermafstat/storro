@@ -31,10 +31,12 @@ const querySchema = z
     includePrivate: z.enum(["true", "false"]).optional(),
     createdFrom: z.string().datetime().optional(),
     createdTo: z.string().datetime().optional(),
+    selectedEventIds: z.string().optional(),
     limit: z.coerce.number().int().min(1).max(500).optional(),
   })
   .transform((query) => ({
     ...query,
+    selectedEventIds: query.selectedEventIds?.split(",").map((item) => item.trim()).filter(Boolean),
     includePrivate: query.includePrivate ? query.includePrivate === "true" : undefined,
     createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
     createdTo: query.createdTo ? new Date(query.createdTo) : undefined,

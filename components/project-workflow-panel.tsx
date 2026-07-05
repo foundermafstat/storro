@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Bot,
   CheckCircle2,
+  Clock3,
   FilePenLine,
+  GitCommitHorizontal,
   GitPullRequest,
   Layers3,
+  MessageSquareText,
   Play,
   RefreshCw,
   ShieldCheck,
@@ -23,6 +26,7 @@ type SourceRow = {
   sourceType: string;
   status: string;
   isPrivate: boolean;
+  sourceCreatedAt: string;
   parsedAt: string | null;
   normalizedCount: number;
   chunkCount: number;
@@ -70,6 +74,29 @@ type TemplateOption = {
   available: boolean;
 };
 
+type TimelineEventRow = {
+  id: string;
+  entityType: string;
+  eventType: string;
+  title: string;
+  summary: string;
+  sourceType: string | null;
+  isPrivate: boolean;
+  occurredAt: string;
+};
+
+type TimelineDayRow = {
+  date: string;
+  events: TimelineEventRow[];
+};
+
+type GitHubImportTarget = {
+  installationId: string;
+  owner: string;
+  repo: string;
+  branch?: string;
+};
+
 type FactCounts = {
   pending: number;
   approved: number;
@@ -87,24 +114,29 @@ export function ProjectWorkflowPanel({
   extractionRuns,
   factCounts,
   generationJobs,
+  githubImportTarget,
   projectId,
   sources,
   storyRuns,
   templates,
+  timeline,
 }: {
   approvedFactCount: number;
   artifacts: ArtifactRow[];
   extractionRuns: ExtractionRunRow[];
   factCounts: FactCounts;
   generationJobs: GenerationJobRow[];
+  githubImportTarget: GitHubImportTarget | null;
   projectId: string;
   sources: SourceRow[];
   storyRuns: StoryRunRow[];
   templates: TemplateOption[];
+  timeline: TimelineDayRow[];
 }) {
   const router = useRouter();
   const [selectedSourceIds, setSelectedSourceIds] = useState(() => new Set(sources.map((source) => source.id)));
-  const [selectedTemplateId, setSelectedTemplateId] = useState(templates.find((item) => item.available)?.id ?? "");
+  const defaultTemplate = templates.find((item) => item.id === "long-article" && item.available) ?? templates.find((item) => item.available);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(defaultTemplate?.id ?? "");
   const [queuedExtractionRunId, setQueuedExtractionRunId] = useState<string | null>(null);
   const [queuedGenerationJobId, setQueuedGenerationJobId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -117,32 +149,22 @@ export function ProjectWorkflowPanel({
   const runnableGenerationJobId =
     queuedGenerationJobId ?? generationJobs.find((job) => job.status === "QUEUED")?.id ?? null;
   const selectedSourceCount = selectedSourceIds.size;
-
-  const steps = useMemo(
-    () => [
-      {
-        title: "Ingest sources",
-        done: sources.length > 0,
-        detail: `${sources.length} source documents`,
-      },
-      {
-        title: "Prepare evidence",
-        done: sources.some((source) => source.chunkCount > 0),
-        detail: `${sources.reduce((total, source) => total + source.chunkCount, 0)} normalized chunks`,
-      },
-      {
-        title: "Review facts",
-        done: factCounts.approved > 0,
-        detail: `${factCounts.approved} approved / ${factCounts.pending} pending`,
-      },
-      {
-        title: "Generate artifact",
-        done: artifacts.length > 0,
-        detail: `${artifacts.length} artifacts`,
-      },
-    ],
-    [artifacts.length, factCounts.approved, factCounts.pending, sources],
-  );
+  const timelineEventCount = timeline.reduce((total, day) => total + day.events.length, 0);
+  const timelineDates = timeline.map((day) => day.date);
+  const timelineRange = timelineDates.length > 0 ? `${timelineDates[timelineDates.length - 1]} - ${timelineDates[0]}` : "No timeline yet";
+  const connectedLabels = [
+    sources.some((source) => source.sourceType.startsWith("CHATGPT")) ? "ChatGPT" : null,
+    sources.some((source) => source.sourceType.startsWith("GITHUB")) ? "GitHub" : null,
+    sources.some((source) => source.sourceType === "CODEX_NOTE") ? "Codex" : null,
+    sources.some((source) => source.sourceType === "MANUAL_NOTE") ? "Manual" : null,
+  ].filter(Boolean);
+  const readiness = factCounts.pending > 0
+    ? "Review evidence"
+    : factCounts.approved > 0
+      ? "Ready for draft"
+      : sources.length > 0
+        ? "Prepare context"
+        : "Add context";
 
   function toggleSource(sourceId: string, checked: boolean) {
     setSelectedSourceIds((current) => {
@@ -258,14 +280,54 @@ export function ProjectWorkflowPanel({
     );
   }
 
+  async function prepareStoryContext() {
+    const data = await postJson<{ factCounts: FactCounts; nextStep: string }>(
+      "prepare-story-context",
+      `/api/projects/${projectId}/story-workflow/prepare`,
+      {
+        selectedSourceIds: Array.from(selectedSourceIds),
+        templateId: selectedTemplate?.id,
+        format: selectedTemplate?.format,
+        mode: selectedTemplate?.format === "LONG_ARTICLE" ? "public_update" : "private_journal",
+        includePrivate: selectedTemplate?.format !== "LONG_ARTICLE",
+      },
+    );
+
+    if (data) {
+      setStatus(data.nextStep === "review_evidence" ? "Context prepared. Review evidence before draft." : "Story context ready.");
+    }
+  }
+
+  async function generateDraft() {
+    if (!selectedTemplate) {
+      return;
+    }
+
+    await postJson("generate-draft", `/api/projects/${projectId}/story-workflow/generate`, {
+      templateId: selectedTemplate.id,
+      format: selectedTemplate.format,
+    });
+  }
+
+  async function importRecentGitHubCommits() {
+    if (!githubImportTarget) {
+      return;
+    }
+
+    await postJson("github-import-recent", `/api/projects/${projectId}/integrations/github/import-repository`, {
+      ...githubImportTarget,
+      maxCommits: 20,
+    });
+  }
+
   return (
     <section className="mt-8 grid gap-6">
       <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Production workflow</h2>
+            <h2 className="text-lg font-semibold">Story flow</h2>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
-              Source import, evidence preparation, fact review, planning, generation, and editor handoff.
+              Select context, prepare a timeline, review evidence, then generate the draft.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -287,6 +349,15 @@ export function ProjectWorkflowPanel({
                 GitHub PRs
               </Link>
             </Button>
+            <Button
+              disabled={!githubImportTarget || pendingAction === "github-import-recent"}
+              onClick={importRecentGitHubCommits}
+              size="sm"
+              variant="secondary"
+            >
+              <GitCommitHorizontal className="size-4" aria-hidden="true" />
+              Recent commits
+            </Button>
             <Button asChild size="sm" variant="secondary">
               <Link href={`/dashboard/projects/${projectId}/codex-evidence`}>
                 <Bot className="size-4" aria-hidden="true" />
@@ -296,7 +367,12 @@ export function ProjectWorkflowPanel({
           </div>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {steps.map((step) => (
+          {[
+            { title: "Connected context", detail: connectedLabels.length > 0 ? connectedLabels.join(", ") : "No sources yet", done: connectedLabels.length > 0 },
+            { title: "Timeline range", detail: timelineRange, done: timelineEventCount > 0 },
+            { title: "Evidence", detail: `${factCounts.approved} approved / ${factCounts.pending} pending`, done: factCounts.approved > 0 && factCounts.pending === 0 },
+            { title: "Readiness", detail: readiness, done: readiness === "Ready for draft" },
+          ].map((step) => (
             <div className="rounded-md border border-[color:var(--border)] bg-[color:var(--background)] p-3" key={step.title}>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">{step.title}</p>
@@ -313,10 +389,155 @@ export function ProjectWorkflowPanel({
         <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
           <div className="flex flex-col gap-3 border-b border-[color:var(--border)] p-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h3 className="font-semibold">Sources and preparation</h3>
-              <p className="mt-1 text-sm text-[color:var(--muted)]">{selectedSourceCount} selected for extraction</p>
+              <h3 className="font-semibold">1. Select context</h3>
+              <p className="mt-1 text-sm text-[color:var(--muted)]">{selectedSourceCount} selected timeline inputs</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={selectedSourceCount === 0 || pendingAction === "prepare-story-context"}
+              onClick={prepareStoryContext}
+              size="sm"
+              variant="primary"
+            >
+              <Layers3 className="size-4" aria-hidden="true" />
+              Prepare story context
+            </Button>
+          </div>
+          {sources.length === 0 ? (
+            <div className="p-4 text-sm text-[color:var(--muted)]">
+              Connect ChatGPT App, GitHub App, Codex MCP, or add a manual note to start.
+            </div>
+          ) : (
+            <ul className="divide-y divide-[color:var(--border)]">
+              {sources.slice(0, 8).map((source) => (
+                <li className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between" key={source.id}>
+                  <label className="flex min-w-0 items-start gap-3">
+                    <input
+                      checked={selectedSourceIds.has(source.id)}
+                      className="mt-1 size-4"
+                      onChange={(event) => toggleSource(source.id, event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{source.title}</span>
+                      <span className="mt-1 block text-xs text-[color:var(--muted)]">
+                        {source.sourceType} · {formatDate(source.sourceCreatedAt)}
+                      </span>
+                    </span>
+                  </label>
+                  <Badge variant={source.isPrivate ? "warning" : "accent"}>{source.isPrivate ? "Private" : "Public"}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <aside className="grid content-start gap-4">
+          <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold">3. Review evidence</h3>
+              <Badge variant={factCounts.pending === 0 && factCounts.approved > 0 ? "success" : "neutral"}>
+                {factCounts.approved} approved
+              </Badge>
+            </div>
+            <dl className="mt-4 grid gap-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-[color:var(--muted)]">Pending</dt>
+                <dd>{factCounts.pending}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-[color:var(--muted)]">Private</dt>
+                <dd>{factCounts.privateFacts}</dd>
+              </div>
+            </dl>
+            <Button asChild className="mt-4 w-full" size="sm" variant="secondary">
+              <Link href={`/dashboard/projects/${projectId}/extraction-review`}>
+                <CheckCircle2 className="size-4" aria-hidden="true" />
+                Review facts
+              </Link>
+            </Button>
+          </section>
+
+          <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+            <h3 className="font-semibold">4. Generate draft</h3>
+            <select
+              className="mt-4 h-10 w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 text-sm"
+              onChange={(event) => setSelectedTemplateId(event.target.value)}
+              value={selectedTemplateId}
+            >
+              {templates.map((template) => (
+                <option disabled={!template.available} key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+            <Button
+              className="mt-3 w-full"
+              disabled={!selectedTemplate || factCounts.approved === 0 || factCounts.pending > 0 || pendingAction === "generate-draft"}
+              onClick={generateDraft}
+              size="sm"
+              variant="primary"
+            >
+              <Bot className="size-4" aria-hidden="true" />
+              {factCounts.pending > 0 ? "Review evidence first" : "Generate draft"}
+            </Button>
+            <Button asChild className="mt-2 w-full" size="sm" variant="secondary">
+              <Link href={`/dashboard/projects/${projectId}/templates`}>Open templates</Link>
+            </Button>
+          </section>
+        </aside>
+      </section>
+
+      <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
+        <div className="flex flex-col gap-2 border-b border-[color:var(--border)] p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="font-semibold">2. Project timeline</h3>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">{timelineEventCount} ordered events from selected integrations and Storro activity</p>
+          </div>
+          <Badge variant={timelineEventCount > 0 ? "success" : "neutral"}>{timelineEventCount > 0 ? "Timeline ready" : "Empty"}</Badge>
+        </div>
+        {timeline.length === 0 ? (
+          <p className="p-4 text-sm text-[color:var(--muted)]">Prepare story context after selecting sources to build the timeline.</p>
+        ) : (
+          <div className="grid gap-4 p-4">
+            {timeline.slice(0, 5).map((day) => (
+              <div className="grid gap-3" key={day.date}>
+                <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--muted)]">{day.date}</p>
+                <ul className="grid gap-2">
+                  {day.events.slice(0, 6).map((event) => {
+                    const TimelineIcon = getTimelineIcon(event);
+
+                    return (
+                      <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-md border border-[color:var(--border)] bg-[color:var(--background)] p-3" key={event.id}>
+                        <TimelineIcon className="mt-0.5 size-4 text-[color:var(--muted)]" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium">{event.title}</p>
+                            <Badge variant={event.isPrivate ? "warning" : "accent"}>{event.eventType}</Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-[color:var(--muted)]">{formatDate(event.occurredAt)}</p>
+                          <p className="mt-1 line-clamp-2 text-sm text-[color:var(--muted)]">{event.summary}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <details className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
+        <summary className="cursor-pointer p-4 font-semibold">Advanced pipeline</summary>
+        <div className="grid gap-6 border-t border-[color:var(--border)] p-4">
+          <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--background)]">
+              <div className="flex flex-col gap-3 border-b border-[color:var(--border)] p-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="font-semibold">Sources and preparation</h3>
+                  <p className="mt-1 text-sm text-[color:var(--muted)]">{selectedSourceCount} selected for extraction</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
               <Button
                 disabled={selectedSourceCount === 0 || pendingAction === "queue-extraction"}
                 onClick={queueExtraction}
@@ -331,7 +552,7 @@ export function ProjectWorkflowPanel({
                 {normalizedChunkCount > 0 ? "Run queued extraction" : "Normalize first"}
               </Button>
             </div>
-          </div>
+              </div>
           {sources.length === 0 ? (
             <div className="p-4 text-sm text-[color:var(--muted)]">
               Connect ChatGPT App, GitHub App, Codex MCP, or add a manual note to start the pipeline.
@@ -382,10 +603,10 @@ export function ProjectWorkflowPanel({
               ))}
             </ul>
           )}
-        </div>
+            </div>
 
-        <aside className="grid content-start gap-4">
-          <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+            <aside className="grid content-start gap-4">
+          <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--background)] p-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-semibold">Fact review</h3>
               <Badge variant={factCounts.approved > 0 ? "success" : "neutral"}>{factCounts.approved} approved</Badge>
@@ -412,7 +633,7 @@ export function ProjectWorkflowPanel({
             </Button>
           </section>
 
-          <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+          <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--background)] p-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-semibold">Story planning</h3>
               <Bot className="size-4 text-[color:var(--muted)]" aria-hidden="true" />
@@ -446,7 +667,7 @@ export function ProjectWorkflowPanel({
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
+        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--background)]">
           <div className="border-b border-[color:var(--border)] p-4">
             <h3 className="font-semibold">Story runs</h3>
           </div>
@@ -484,7 +705,7 @@ export function ProjectWorkflowPanel({
           )}
         </div>
 
-        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
+        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--background)]">
           <div className="flex flex-col gap-3 border-b border-[color:var(--border)] p-4 md:flex-row md:items-center md:justify-between">
             <h3 className="font-semibold">Artifacts</h3>
             <Button disabled={!runnableGenerationJobId || pendingAction?.startsWith("run-artifact")} onClick={runArtifactJob} size="sm" variant="secondary">
@@ -518,7 +739,7 @@ export function ProjectWorkflowPanel({
       </section>
 
       {extractionRuns.length > 0 ? (
-        <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
+        <section className="rounded-lg border border-[color:var(--border)] bg-[color:var(--background)]">
           <div className="border-b border-[color:var(--border)] p-4">
             <h3 className="font-semibold">Extraction runs</h3>
           </div>
@@ -540,6 +761,8 @@ export function ProjectWorkflowPanel({
           </ul>
         </section>
       ) : null}
+        </div>
+      </details>
     </section>
   );
 }
@@ -549,4 +772,20 @@ function formatDate(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function getTimelineIcon(event: TimelineEventRow) {
+  if (event.entityType === "chatgpt_message") {
+    return MessageSquareText;
+  }
+
+  if (event.entityType === "github_commit" || event.entityType === "github_file_change") {
+    return GitCommitHorizontal;
+  }
+
+  if (event.entityType === "codex_turn") {
+    return Bot;
+  }
+
+  return Clock3;
 }

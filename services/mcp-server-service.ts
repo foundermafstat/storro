@@ -14,16 +14,47 @@ type McpToolName =
   | "create_project"
   | "list_projects"
   | "ingest_chatgpt_context"
+  | "ingest_codex_turn"
   | "ingest_research_note"
   | "ingest_build_note"
   | "generate_story"
   | "retrieve_artifact"
   | "save_revision";
 
+const messageTimelineItemSchema = z.object({
+  conversationId: z.string().optional(),
+  messageId: z.string().optional(),
+  role: z.enum(["system", "user", "assistant", "tool"]).optional(),
+  text: z.string().optional(),
+  summary: z.string().optional(),
+  occurredAt: z.string().datetime().optional(),
+});
+
 const toolSchemas = {
   create_project: z.object({ name: z.string().min(1), description: z.string().optional() }),
   list_projects: z.object({ search: z.string().optional() }),
-  ingest_chatgpt_context: z.object({ projectId: z.string().uuid(), title: z.string().min(1), body: z.string().min(1), sourceUrl: z.string().url().optional() }),
+  ingest_chatgpt_context: z.object({
+    projectId: z.string().uuid(),
+    title: z.string().min(1),
+    body: z.string().min(1),
+    sourceUrl: z.string().url().optional(),
+    conversationId: z.string().optional(),
+    messageIds: z.array(z.string().min(1)).optional(),
+    occurredAt: z.string().datetime().optional(),
+    messageTimeline: z.array(messageTimelineItemSchema).optional(),
+  }),
+  ingest_codex_turn: z.object({
+    projectId: z.string().uuid(),
+    title: z.string().min(1).optional(),
+    prompt: z.string().min(1),
+    responseSummary: z.string().min(1),
+    occurredAt: z.string().datetime().optional(),
+    branchNames: z.array(z.string().min(1)).optional(),
+    commitRange: z.string().optional(),
+    filesTouched: z.array(z.string().min(1)).optional(),
+    decisions: z.array(z.string().min(1)).optional(),
+    fixes: z.array(z.string().min(1)).optional(),
+  }),
   ingest_research_note: z.object({ projectId: z.string().uuid(), title: z.string().min(1), body: z.string().min(1) }),
   ingest_build_note: z.object({ projectId: z.string().uuid(), title: z.string().min(1), body: z.string().min(1) }),
   generate_story: z.object({ projectId: z.string().uuid(), storyRunId: z.string().uuid(), promptVersion: z.string().optional() }),
@@ -44,7 +75,45 @@ export const mcpTools = [
   tool("ingest_chatgpt_context", "Create a Storro source from selected ChatGPT conversation context.", {
     type: "object",
     required: ["projectId", "title", "body"],
-    properties: { projectId: { type: "string" }, title: { type: "string" }, body: { type: "string" }, sourceUrl: { type: "string" } },
+    properties: {
+      projectId: { type: "string" },
+      title: { type: "string" },
+      body: { type: "string" },
+      sourceUrl: { type: "string" },
+      conversationId: { type: "string" },
+      messageIds: { type: "array", items: { type: "string" } },
+      occurredAt: { type: "string" },
+      messageTimeline: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            conversationId: { type: "string" },
+            messageId: { type: "string" },
+            role: { type: "string" },
+            text: { type: "string" },
+            summary: { type: "string" },
+            occurredAt: { type: "string" },
+          },
+        },
+      },
+    },
+  }),
+  tool("ingest_codex_turn", "Create a Storro source from a user-selected Codex prompt and outcome.", {
+    type: "object",
+    required: ["projectId", "prompt", "responseSummary"],
+    properties: {
+      projectId: { type: "string" },
+      title: { type: "string" },
+      prompt: { type: "string" },
+      responseSummary: { type: "string" },
+      occurredAt: { type: "string" },
+      branchNames: { type: "array", items: { type: "string" } },
+      commitRange: { type: "string" },
+      filesTouched: { type: "array", items: { type: "string" } },
+      decisions: { type: "array", items: { type: "string" } },
+      fixes: { type: "array", items: { type: "string" } },
+    },
   }),
   tool("ingest_research_note", "Create a normal Storro source record from explicit research text.", {
     type: "object",
@@ -129,6 +198,7 @@ async function dispatchTool(context: ScopedContext, name: McpToolName, rawArgs: 
           body: args.body,
           sourceType: "CHATGPT_NOTE",
           tags: ["mcp", "chatgpt", "selected-context"],
+          sourceCreatedAt: args.occurredAt ? new Date(args.occurredAt) : undefined,
           provenance: {
             kind: "chatgpt",
             externalUrl: args.sourceUrl,
@@ -136,6 +206,44 @@ async function dispatchTool(context: ScopedContext, name: McpToolName, rawArgs: 
           },
           metadata: {
             chatGptConnector: {
+              selectedOnly: true,
+              importedAt: new Date().toISOString(),
+              conversationId: args.conversationId,
+              messageIds: args.messageIds,
+              occurredAt: args.occurredAt,
+              messageTimeline: args.messageTimeline,
+            },
+          },
+        }, db),
+      };
+    }
+    case "ingest_codex_turn": {
+      const args = toolSchemas.ingest_codex_turn.parse(rawArgs);
+      const title = args.title ?? `Codex turn · ${args.prompt.slice(0, 60)}`;
+
+      return {
+        source: await createSourceDocument(context, {
+          projectId: args.projectId,
+          title,
+          body: renderCodexTurnBody(args),
+          sourceType: "CODEX_NOTE",
+          tags: ["mcp", "codex", "selected-turn"],
+          isPrivate: true,
+          sourceCreatedAt: args.occurredAt ? new Date(args.occurredAt) : undefined,
+          provenance: {
+            kind: "codex",
+            importedAt: new Date(),
+          },
+          metadata: {
+            codexTurn: {
+              prompt: args.prompt,
+              responseSummary: args.responseSummary,
+              occurredAt: args.occurredAt,
+              branchNames: args.branchNames,
+              commitRange: args.commitRange,
+              filesTouched: args.filesTouched,
+              decisions: args.decisions,
+              fixes: args.fixes,
               selectedOnly: true,
               importedAt: new Date().toISOString(),
             },
@@ -215,4 +323,19 @@ async function getArtifact(context: ScopedContext, projectId: string, artifactId
 
 function tool(name: McpToolName, description: string, inputSchema: Record<string, unknown>) {
   return { name, description, inputSchema };
+}
+
+function renderCodexTurnBody(args: z.infer<typeof toolSchemas.ingest_codex_turn>) {
+  return [
+    "# Codex prompt",
+    args.prompt,
+    "",
+    "# Response summary",
+    args.responseSummary,
+    args.branchNames?.length ? `\n# Branches\n${args.branchNames.map((branch) => `- ${branch}`).join("\n")}` : "",
+    args.commitRange ? `\n# Commit range\n${args.commitRange}` : "",
+    args.filesTouched?.length ? `\n# Files touched\n${args.filesTouched.map((file) => `- ${file}`).join("\n")}` : "",
+    args.decisions?.length ? `\n# Decisions\n${args.decisions.map((decision) => `- ${decision}`).join("\n")}` : "",
+    args.fixes?.length ? `\n# Fixes\n${args.fixes.map((fix) => `- ${fix}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n");
 }

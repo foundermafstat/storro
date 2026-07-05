@@ -84,10 +84,97 @@ describe("mcp server service", () => {
     await expect(executeMcpTool(null, { name: "list_projects", arguments: {} })).rejects.toThrow("MCP authentication is required.");
   });
 
+  it("stores selected ChatGPT message timeline metadata", async () => {
+    await executeMcpTool(context, {
+      name: "ingest_chatgpt_context",
+      arguments: {
+        projectId,
+        title: "Selected ChatGPT context",
+        body: "User asked for timeline-first story flow.",
+        conversationId: "chatgpt-conv-1",
+        messageIds: ["msg-1"],
+        occurredAt: "2026-07-04T08:00:00.000Z",
+        messageTimeline: [
+          {
+            messageId: "msg-1",
+            role: "user",
+            summary: "Asked for fewer steps and selected chats.",
+            occurredAt: "2026-07-04T08:00:00.000Z",
+          },
+        ],
+      },
+    });
+    const source = await prisma.sourceDocument.findFirstOrThrow({
+      where: {
+        orgId,
+        projectId,
+        title: "Selected ChatGPT context",
+      },
+    });
+
+    expect(source.sourceType).toBe("CHATGPT_NOTE");
+    expect(source.sourceCreatedAt?.toISOString()).toBe("2026-07-04T08:00:00.000Z");
+    expect(source.metadata).toMatchObject({
+      chatGptConnector: {
+        selectedOnly: true,
+        conversationId: "chatgpt-conv-1",
+        messageIds: ["msg-1"],
+      },
+    });
+  });
+
+  it("validates and stores selected Codex turns", async () => {
+    await expect(executeMcpTool(context, {
+      name: "ingest_codex_turn",
+      arguments: {
+        projectId,
+        prompt: "",
+        responseSummary: "empty prompt must fail",
+      },
+    })).rejects.toThrow();
+
+    await executeMcpTool(context, {
+      name: "ingest_codex_turn",
+      arguments: {
+        projectId,
+        prompt: "Implement timeline-first flow.",
+        responseSummary: "Added timeline, workflow endpoints, and UI.",
+        occurredAt: "2026-07-04T10:00:00.000Z",
+        branchNames: ["main"],
+        commitRange: "abc123..def456",
+        filesTouched: ["components/project-workflow-panel.tsx"],
+        decisions: ["Keep review gate."],
+        fixes: ["Hide manual queue controls in Advanced."],
+      },
+    });
+    const source = await prisma.sourceDocument.findFirstOrThrow({
+      where: {
+        orgId,
+        projectId,
+        sourceType: "CODEX_NOTE",
+        title: {
+          contains: "Codex turn",
+        },
+      },
+    });
+
+    expect(source.tags).toEqual(expect.arrayContaining(["mcp", "codex", "selected-turn"]));
+    expect(source.sourceCreatedAt?.toISOString()).toBe("2026-07-04T10:00:00.000Z");
+    expect(source.metadata).toMatchObject({
+      codexTurn: {
+        prompt: "Implement timeline-first flow.",
+        responseSummary: "Added timeline, workflow endpoints, and UI.",
+        selectedOnly: true,
+      },
+    });
+  });
+
   it("covers every MCP tool contract schema", () => {
     expect(mcpTools.map((tool) => tool.name)).toEqual([
       "create_project",
       "list_projects",
+      "ingest_chatgpt_context",
+      "ingest_codex_turn",
       "ingest_research_note",
       "ingest_build_note",
       "generate_story",

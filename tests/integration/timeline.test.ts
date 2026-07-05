@@ -84,6 +84,71 @@ describe("timeline service", () => {
         tags: ["github"],
         isPrivate: false,
         sourceCreatedAt: selectedDate,
+        metadata: {
+          github: {
+            installationId: "123",
+            selectedBranch: "main",
+            repository: { owner: "foundermafstat", name: "storro" },
+            commit: {
+              sha: "abc123456789",
+              message: "Implement timeline first flow",
+              authoredAt: "2026-07-04T09:30:00.000Z",
+              committedAt: "2026-07-04T09:35:00.000Z",
+              stats: { additions: 42, deletions: 7, total: 49 },
+              files: [
+                { filename: "services/timeline-service.ts", status: "modified", additions: 30, deletions: 4, changes: 34 },
+              ],
+            },
+          },
+        },
+      },
+    });
+    await prisma.sourceDocument.create({
+      data: {
+        orgId,
+        projectId,
+        createdById: userId,
+        sourceType: "CHATGPT_EXPORT",
+        title: "Selected ChatGPT planning chat",
+        rawText: "User asked how to reduce story creation steps. Assistant suggested a timeline-first flow.",
+        tags: ["chatgpt"],
+        isPrivate: false,
+        sourceCreatedAt: selectedDate,
+        metadata: {
+          chatgpt: {
+            conversationId: "chatgpt-conv-1",
+            title: "Selected ChatGPT planning chat",
+            messages: [
+              { id: "msg-user-1", role: "user", order: 0, createdAt: "2026-07-04T08:00:00.000Z", summary: "Asked for fewer steps and selected chats." },
+              { id: "msg-assistant-1", role: "assistant", order: 1, createdAt: "2026-07-04T08:01:00.000Z", summary: "Proposed timeline-first story preparation." },
+            ],
+          },
+        },
+      },
+    });
+    await prisma.sourceDocument.create({
+      data: {
+        orgId,
+        projectId,
+        createdById: userId,
+        sourceType: "CODEX_NOTE",
+        title: "Codex timeline implementation",
+        rawText: "Codex implemented timeline service and dashboard changes.",
+        tags: ["codex"],
+        isPrivate: true,
+        sourceCreatedAt: selectedDate,
+        metadata: {
+          codexTurn: {
+            prompt: "Implement timeline-first story flow.",
+            responseSummary: "Added timeline events, MCP inputs, workflow endpoints, and UI.",
+            occurredAt: "2026-07-04T10:00:00.000Z",
+            branchNames: ["main"],
+            commitRange: "abc123..def456",
+            filesTouched: ["components/project-workflow-panel.tsx"],
+            decisions: ["Keep review gate before draft generation."],
+            fixes: ["Move manual pipeline controls into Advanced."],
+          },
+        },
       },
     });
     const extractionRun = await prisma.extractionRun.create({
@@ -176,6 +241,23 @@ describe("timeline service", () => {
     });
     expect(publicUpdate.events.some((event) => event.title === "In-range daily build")).toBe(false);
     expect(publicUpdate.events.some((event) => event.title === "Public commit event")).toBe(true);
+  });
+
+  it("flattens selected ChatGPT, Codex, and GitHub metadata into ordered event types", async () => {
+    const timeline = await getProjectTimeline(context, {
+      projectId,
+      view: "daily",
+      mode: "private_journal",
+      createdFrom: new Date("2026-07-04T00:00:00.000Z"),
+      createdTo: new Date("2026-07-04T23:59:59.999Z"),
+    });
+    const eventTypes = timeline.events.map((event) => event.entityType);
+    const ordered = [...timeline.events].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+
+    expect(eventTypes).toEqual(expect.arrayContaining(["chatgpt_message", "codex_turn", "github_commit", "github_file_change"]));
+    expect(ordered.find((event) => event.id.includes("msg-user-1"))?.occurredAt).toBe("2026-07-04T08:00:00.000Z");
+    expect(timeline.events.some((event) => event.title === "services/timeline-service.ts")).toBe(true);
+    expect(timeline.events.some((event) => event.summary.includes("review gate"))).toBe(true);
   });
 
   it("generates a daily journal artifact from only selected date-range events", async () => {

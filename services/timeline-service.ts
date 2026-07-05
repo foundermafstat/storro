@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import type { ArtifactFormat, Prisma, SourceType } from "@prisma/client";
+import type { ArtifactFormat, Prisma, SourceDocument, SourceType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/db/client";
 import type { DatabaseClient } from "@/db/transaction";
@@ -23,12 +23,22 @@ type TimelineInput = {
   includePrivate?: boolean;
   createdFrom?: Date;
   createdTo?: Date;
+  selectedEventIds?: string[];
   limit?: number;
 };
 
-type TimelineEvent = {
+export type TimelineEvent = {
   id: string;
-  entityType: "source_document" | "extraction_run" | "story_artifact" | "artifact_export" | "integration_event";
+  entityType:
+    | "source_document"
+    | "chatgpt_message"
+    | "codex_turn"
+    | "github_commit"
+    | "github_file_change"
+    | "extraction_run"
+    | "story_artifact"
+    | "artifact_export"
+    | "integration_event";
   entityId: string;
   eventType: string;
   title: string;
@@ -105,9 +115,14 @@ export async function generateTimelineStoryArtifact(
     throw new ValidationServiceError("Timeline generation requires at least one selected event.");
   }
 
-  const selectedSourceIds = selectedEvents
-    .filter((event) => event.entityType === "source_document")
-    .map((event) => event.entityId);
+  const orderedEvents = [...selectedEvents].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+  const selectedSourceIds = [
+    ...new Set(
+      selectedEvents
+        .filter((event) => event.sourceType)
+        .map((event) => event.entityId),
+    ),
+  ];
   const extractionRun = await db.extractionRun.create({
     data: {
       orgId: context.orgId,
@@ -154,7 +169,8 @@ export async function generateTimelineStoryArtifact(
         messages: [
           {
             role: "system",
-            content: "Write a grounded build journal using only the selected timeline events. Do not add claims that are absent from the events.",
+            content:
+              "Write a grounded build journal using only the selected timeline events. Build the narrative around chronology, cause and effect, and how the project changed over time. Do not add claims that are absent from the events.",
           },
           {
             role: "user",
@@ -162,7 +178,7 @@ export async function generateTimelineStoryArtifact(
               title: input.title,
               mode: timeline.mode,
               view: timeline.view,
-              selectedEvents,
+              orderedTimelineEvents: orderedEvents,
             }),
           },
         ],
@@ -201,7 +217,7 @@ export async function generateTimelineStoryArtifact(
         metadata: {
           mode: timeline.mode,
           view: timeline.view,
-          selectedTimelineEventIds: selectedEvents.map((event) => event.id),
+          selectedTimelineEventIds: orderedEvents.map((event) => event.id),
           selectedSourceIds,
           dateRange: {
             createdFrom: input.createdFrom?.toISOString() ?? null,
@@ -306,18 +322,7 @@ async function loadTimelineEvents(context: ScopedContext, input: TimelineInput, 
   ]);
 
   return [
-    ...sources.map((source): TimelineEvent => ({
-      id: `source_document:${source.id}`,
-      entityType: "source_document",
-      entityId: source.id,
-      eventType: source.sourceType,
-      title: source.title,
-      summary: createSummary(source.rawText ?? source.title),
-      sourceType: source.sourceType,
-      isPrivate: source.isPrivate,
-      occurredAt: (source.sourceCreatedAt ?? source.createdAt).toISOString(),
-      metadata: source.metadata,
-    })),
+    ...sources.flatMap(sourceToTimelineEvents),
     ...extractionRuns.map((run): TimelineEvent => ({
       id: `extraction_run:${run.id}`,
       entityType: "extraction_run",
@@ -392,9 +397,222 @@ function applyTimelineFilters(events: TimelineEvent[], input: TimelineInput & { 
     if (input.createdTo && Date.parse(event.occurredAt) > input.createdTo.getTime()) {
       return false;
     }
+    if (input.selectedEventIds?.length && !input.selectedEventIds.includes(event.id)) {
+      return false;
+    }
 
     return true;
   });
+}
+
+function sourceToTimelineEvents(source: SourceDocument): TimelineEvent[] {
+  const metadata = toRecord(source.metadata);
+  const sourceOccurredAt = readDate(
+    readNested(metadata, ["chatGptConnector", "occurredAt"])
+      ?? readNested(metadata, ["chatGptApp", "occurredAt"])
+      ?? source.sourceCreatedAt
+      ?? source.createdAt,
+  ) ?? source.createdAt.toISOString();
+  const base: TimelineEvent = {
+    id: `source_document:${source.id}`,
+    entityType: "source_document",
+    entityId: source.id,
+    eventType: source.sourceType,
+    title: source.title,
+    summary: createSummary(source.rawText ?? source.title),
+    sourceType: source.sourceType,
+    isPrivate: source.isPrivate,
+    occurredAt: sourceOccurredAt,
+    metadata: source.metadata,
+  };
+
+  return [
+    base,
+    ...chatGptMessageEvents(source, metadata, sourceOccurredAt),
+    ...codexTurnEvents(source, metadata, sourceOccurredAt),
+    ...githubCommitEvents(source, metadata, sourceOccurredAt),
+  ];
+}
+
+function chatGptMessageEvents(source: SourceDocument, metadata: JsonRecord | null, fallbackDate: string): TimelineEvent[] {
+  if (source.sourceType !== "CHATGPT_EXPORT" && source.sourceType !== "CHATGPT_NOTE") {
+    return [];
+  }
+
+  const chatgpt = toRecord(metadata?.chatgpt);
+  const connector = toRecord(metadata?.chatGptConnector) ?? toRecord(metadata?.chatGptApp);
+  const messages = readArray(connector?.messageTimeline).length > 0
+    ? readArray(connector?.messageTimeline)
+    : readArray(chatgpt?.messages);
+  const conversationId = readString(connector?.conversationId) ?? readString(chatgpt?.conversationId);
+  const conversationTitle = readString(chatgpt?.title) ?? source.title;
+
+  return messages.flatMap((message, index) => {
+    const item = toRecord(message);
+
+    if (!item) {
+      return [];
+    }
+
+    const role = readString(item.role) ?? "message";
+    const occurredAt = readDate(item.occurredAt ?? item.createdAt) ?? fallbackDate;
+    const messageId = readString(item.messageId) ?? readString(item.id) ?? String(index + 1);
+    const summary = readString(item.summary) ?? readString(item.text) ?? `Selected ${role} message from ${conversationTitle}.`;
+
+    return [{
+      id: `chatgpt_message:${source.id}:${messageId}`,
+      entityType: "chatgpt_message",
+      entityId: source.id,
+      eventType: `CHATGPT_${role.toUpperCase()}_MESSAGE`,
+      title: `${conversationTitle} · ${role}`,
+      summary: createSummary(summary),
+      sourceType: source.sourceType,
+      isPrivate: source.isPrivate,
+      occurredAt,
+      metadata: {
+        conversationId,
+        messageId,
+        role,
+        order: readNumber(item.order) ?? index,
+      },
+    } satisfies TimelineEvent];
+  });
+}
+
+function codexTurnEvents(source: SourceDocument, metadata: JsonRecord | null, fallbackDate: string): TimelineEvent[] {
+  if (source.sourceType !== "CODEX_NOTE") {
+    return [];
+  }
+
+  const turn = toRecord(metadata?.codexTurn);
+  const evidence = toRecord(metadata?.codexEvidence);
+  const events: TimelineEvent[] = [];
+
+  if (turn) {
+    const occurredAt = readDate(turn.occurredAt) ?? fallbackDate;
+    const prompt = readString(turn.prompt) ?? source.title;
+    const responseSummary = readString(turn.responseSummary) ?? createSummary(source.rawText ?? source.title);
+    const decisions = readArray(turn.decisions).map((item) => readString(item)).filter(Boolean);
+    const fixes = readArray(turn.fixes).map((item) => readString(item)).filter(Boolean);
+
+    events.push({
+      id: `codex_turn:${source.id}`,
+      entityType: "codex_turn",
+      entityId: source.id,
+      eventType: "CODEX_TURN",
+      title: `Codex prompt · ${createSummary(prompt).slice(0, 80)}`,
+      summary: createSummary([responseSummary, ...decisions, ...fixes].join(" ")),
+      sourceType: source.sourceType,
+      isPrivate: source.isPrivate,
+      occurredAt,
+      metadata: turn as Prisma.JsonObject,
+    });
+  }
+
+  const prompts = readArray(evidence?.prompts);
+
+  for (const [index, promptValue] of prompts.entries()) {
+    const promptRecord = toRecord(promptValue);
+    const prompt = readString(promptRecord?.prompt) ?? readString(promptValue);
+
+    if (!prompt) {
+      continue;
+    }
+
+    const occurredAt = readDate(promptRecord?.occurredAt ?? evidence?.markedAt) ?? fallbackDate;
+    const decisions = readArray(evidence?.decisions).map((item) => readString(item)).filter(Boolean);
+    const fixes = readArray(evidence?.fixes).map((item) => readString(item)).filter(Boolean);
+
+    events.push({
+      id: `codex_turn:${source.id}:prompt:${index + 1}`,
+      entityType: "codex_turn",
+      entityId: source.id,
+      eventType: "CODEX_PROMPT",
+      title: `Codex prompt · ${createSummary(prompt).slice(0, 80)}`,
+      summary: createSummary([...decisions, ...fixes, prompt].join(" ")),
+      sourceType: source.sourceType,
+      isPrivate: source.isPrivate,
+      occurredAt,
+      metadata: {
+        prompt,
+        decisions,
+        fixes,
+        branchNames: evidence?.branchNames,
+        commitRange: evidence?.commitRange,
+      },
+    });
+  }
+
+  return events;
+}
+
+function githubCommitEvents(source: SourceDocument, metadata: JsonRecord | null, fallbackDate: string): TimelineEvent[] {
+  if (source.sourceType !== "GITHUB_COMMIT") {
+    return [];
+  }
+
+  const github = toRecord(metadata?.github);
+  const commit = toRecord(github?.commit);
+
+  if (!commit) {
+    return [];
+  }
+
+  const sha = readString(commit.sha) ?? source.id;
+  const message = readString(commit.message) ?? source.title;
+  const files = readArray(commit.files);
+  const stats = toRecord(commit.stats);
+  const occurredAt = readDate(commit.committedAt ?? commit.authoredAt) ?? fallbackDate;
+  const branch = readString(github?.selectedBranch) ?? readArray(github?.branches).map((item) => readString(item)).find(Boolean);
+  const commitEvent: TimelineEvent = {
+    id: `github_commit:${source.id}:${sha}`,
+    entityType: "github_commit",
+    entityId: source.id,
+    eventType: "GITHUB_COMMIT",
+    title: message.split("\n")[0] || source.title,
+    summary: createSummary(`${sha.slice(0, 7)} · ${files.length} files · +${readNumber(stats?.additions) ?? 0} -${readNumber(stats?.deletions) ?? 0}`),
+    sourceType: source.sourceType,
+    isPrivate: source.isPrivate,
+    occurredAt,
+    metadata: {
+      sha,
+      branch,
+      stats,
+    },
+  };
+
+  return [
+    commitEvent,
+    ...files.flatMap((file, index) => {
+      const item = toRecord(file);
+      const filename = readString(item?.filename);
+
+      if (!item || !filename) {
+        return [];
+      }
+
+      return [{
+        id: `github_file_change:${source.id}:${sha}:${index + 1}`,
+        entityType: "github_file_change",
+        entityId: source.id,
+        eventType: "GITHUB_FILE_CHANGE",
+        title: filename,
+        summary: `${readString(item.status) ?? "changed"} · +${readNumber(item.additions) ?? 0} -${readNumber(item.deletions) ?? 0}`,
+        sourceType: source.sourceType,
+        isPrivate: source.isPrivate,
+        occurredAt,
+        metadata: {
+          sha,
+          branch,
+          filename,
+          status: item.status,
+          additions: item.additions,
+          deletions: item.deletions,
+          changes: item.changes,
+        },
+      } satisfies TimelineEvent];
+    }),
+  ];
 }
 
 function groupTimelineEvents(events: TimelineEvent[], view: TimelineView) {
@@ -424,6 +642,54 @@ function weekKey(value: string) {
 
 function createSummary(value: string) {
   return value.replace(/\s+/g, " ").trim().slice(0, 280);
+}
+
+type JsonRecord = Record<string, unknown>;
+
+function toRecord(value: unknown): JsonRecord | null {
+  return !!value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : null;
+}
+
+function readNested(record: JsonRecord | null, path: string[]) {
+  let current: unknown = record;
+
+  for (const key of path) {
+    const currentRecord = toRecord(current);
+
+    if (!currentRecord) {
+      return undefined;
+    }
+
+    current = currentRecord[key];
+  }
+
+  return current;
+}
+
+function readArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readDate(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const timestamp = Date.parse(value);
+
+  return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
 }
 
 function isIntegrationAuditAction(action: string) {

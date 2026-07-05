@@ -12,6 +12,7 @@ import {
 } from "@/services/project-service";
 import { listStoryPlans } from "@/services/story-planning-service";
 import { listTemplateCatalog } from "@/services/template-service";
+import { getProjectTimeline } from "@/services/timeline-service";
 import Link from "next/link";
 
 export default async function ProjectDetailPage({
@@ -27,7 +28,7 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const [summary, settings, sources, facts, storyRuns, catalog, extractionRuns, artifacts, generationJobs] = await Promise.all([
+  const [summary, settings, sources, facts, storyRuns, catalog, extractionRuns, artifacts, generationJobs, timeline] = await Promise.all([
     getProjectDashboardSummary(context, project.id),
     Promise.resolve(extractProjectSettings(project.metadata)),
     prisma.sourceDocument.findMany({
@@ -97,6 +98,12 @@ export default async function ProjectDetailPage({
       },
       take: 5,
     }),
+    getProjectTimeline(context, {
+      projectId: project.id,
+      mode: "private_journal",
+      includePrivate: true,
+      limit: 80,
+    }),
   ]);
 
   const cards = [
@@ -107,6 +114,7 @@ export default async function ProjectDetailPage({
     { label: "Recent jobs", value: summary.cards.recentJobs },
     { label: "Usage", value: summary.cards.usage },
   ];
+  const githubImportTarget = sources.map(readGitHubImportTarget).find(Boolean) ?? null;
 
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-6 py-10">
@@ -213,6 +221,7 @@ export default async function ProjectDetailPage({
           sourceType: source.sourceType,
           status: source.status,
           isPrivate: source.isPrivate,
+          sourceCreatedAt: source.sourceCreatedAt?.toISOString() ?? source.createdAt.toISOString(),
           parsedAt: source.parsedAt?.toISOString() ?? null,
           normalizedCount: source.normalizedSources.length,
           chunkCount: source.normalizedSources.reduce((total, normalizedSource) => total + normalizedSource._count.chunks, 0),
@@ -233,7 +242,50 @@ export default async function ProjectDetailPage({
           format: item.template.format,
           available: item.available,
         }))}
+        githubImportTarget={githubImportTarget}
+        timeline={timeline.days.map((day) => ({
+          date: day.date,
+          events: day.events.map((event) => ({
+            id: event.id,
+            entityType: event.entityType,
+            eventType: event.eventType,
+            title: event.title,
+            summary: event.summary,
+            sourceType: event.sourceType,
+            isPrivate: event.isPrivate,
+            occurredAt: event.occurredAt,
+          })),
+        }))}
       />
     </main>
   );
+}
+
+function readGitHubImportTarget(source: { metadata: unknown }) {
+  const metadata = toRecord(source.metadata);
+  const github = toRecord(metadata?.github);
+  const repository = toRecord(github?.repository);
+  const installationId = github?.installationId;
+  const selectedBranch = github?.selectedBranch;
+  const owner = repository?.owner;
+  const repo = repository?.name;
+
+  if (typeof installationId !== "number" && typeof installationId !== "string") {
+    return null;
+  }
+
+  if (typeof owner !== "string" || typeof repo !== "string") {
+    return null;
+  }
+
+  return {
+    installationId: String(installationId),
+    owner,
+    repo,
+    branch: typeof selectedBranch === "string" ? selectedBranch : undefined,
+  };
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return !!value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
