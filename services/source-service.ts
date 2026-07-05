@@ -6,6 +6,7 @@ import {
   assertSourcePermission,
 } from "@/services/authorization-service";
 import { recordAuditEvent } from "@/services/audit-service";
+import { assertQuota } from "@/services/billing-service";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
 
 export type SourceProvenanceKind =
@@ -67,6 +68,7 @@ export async function createSourceDocument(
 ) {
   requireScopedContext(context);
   await assertProjectPermission(context, input.projectId, "source.write", db);
+  await assertQuota(context, { resource: "sources" }, db);
 
   const sourceType = input.sourceType ?? classifySourceType(input.provenance);
   const source = await db.sourceDocument.create({

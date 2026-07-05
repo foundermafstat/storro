@@ -6,6 +6,7 @@ import {
   assertProjectPermission,
 } from "@/services/authorization-service";
 import { recordAuditEvent } from "@/services/audit-service";
+import { assertQuota } from "@/services/billing-service";
 import { ValidationServiceError } from "@/services/errors";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
 
@@ -114,6 +115,7 @@ export async function createProject(
 ) {
   requireScopedContext(context);
   await assertOrgPermission(context, "project.write", db);
+  await assertQuota(context, { resource: "projects" }, db);
 
   const slug = normalizeProjectSlug(input.slug ?? input.name);
 
