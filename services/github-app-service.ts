@@ -42,6 +42,7 @@ export type GitHubAppClient = {
       permissions?: Record<string, string>;
     },
   ): Promise<GitHubInstallationToken>;
+  listInstallationRepositories?(installationId: string): Promise<GitHubRepositorySelection[]>;
 };
 
 const repositorySelectionSchema = z.object({
@@ -96,8 +97,32 @@ export class GitHubRestAppClient implements GitHubAppClient {
       permissions: readStringRecord(record.permissions),
       repositories: Array.isArray(record.repositories)
         ? record.repositories.map((repository) => mapGitHubRepository(assertRecord(repository)))
-        : undefined,
+      : undefined,
     };
+  }
+
+  async listInstallationRepositories(installationId: string): Promise<GitHubRepositorySelection[]> {
+    const token = await this.createInstallationAccessToken(installationId);
+    const repositories: GitHubRepositorySelection[] = [];
+    let page = 1;
+
+    while (page <= 10) {
+      const payload = await this.installationJson(token.token, `/installation/repositories?per_page=100&page=${page}`);
+      const record = assertRecord(payload);
+      const pageRepositories = Array.isArray(record.repositories)
+        ? record.repositories.map((repository) => mapGitHubRepository(assertRecord(repository)))
+        : [];
+
+      repositories.push(...pageRepositories);
+
+      if (pageRepositories.length < 100) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return repositories;
   }
 
   private async githubJson(path: string, init: RequestInit) {
@@ -114,6 +139,25 @@ export class GitHubRestAppClient implements GitHubAppClient {
 
     if (!response.ok) {
       throw new ValidationServiceError("GitHub App API request failed.", {
+        status: response.status,
+        body: await response.text(),
+      });
+    }
+
+    return response.json() as Promise<unknown>;
+  }
+
+  private async installationJson(token: string, path: string) {
+    const response = await this.fetchImpl(`https://api.github.com${path}`, {
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${token}`,
+        "x-github-api-version": "2022-11-28",
+      },
+    });
+
+    if (!response.ok) {
+      throw new ValidationServiceError("GitHub installation API request failed.", {
         status: response.status,
         body: await response.text(),
       });
@@ -282,6 +326,70 @@ export async function selectGitHubRepositoriesForProject(
   });
 
   return connections;
+}
+
+export async function listGitHubRepositoryOptionsForProject(
+  context: ScopedContext,
+  input: {
+    projectId: string;
+  },
+  client: GitHubAppClient,
+  db: DatabaseClient = prisma,
+) {
+  requireScopedContext(context);
+  await assertProjectPermission(context, input.projectId, "source.read", db);
+
+  const installations = await db.githubInstallation.findMany({
+    where: {
+      orgId: context.orgId,
+      status: "CONNECTED",
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
+  const projectConnections = await db.sourceConnection.findMany({
+    where: {
+      orgId: context.orgId,
+      projectId: input.projectId,
+      provider: "GITHUB",
+      status: "CONNECTED",
+    },
+  });
+  const connectedExternalIds = new Set(projectConnections.map((connection) => connection.externalId).filter(Boolean));
+
+  const results = [];
+
+  for (const installation of installations) {
+    const token = await createGitHubInstallationToken(
+      context,
+      {
+        installationId: installation.installationId,
+        permissions: {
+          contents: "read",
+          pull_requests: "read",
+          checks: "read",
+        },
+      },
+      client,
+      db,
+    );
+    const repositories = (token.repositories?.length
+      ? token.repositories
+      : await client.listInstallationRepositories?.(installation.installationId) ?? []
+    ).map((repository) => ({
+      ...repository,
+      connected: connectedExternalIds.has(`${installation.installationId}:${repository.fullName}`),
+    }));
+
+    results.push({
+      installationId: installation.installationId,
+      accountLogin: installation.accountLogin,
+      repositories,
+    });
+  }
+
+  return results;
 }
 
 export async function createGitHubInstallationToken(

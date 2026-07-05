@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState, useTransition } from "react";
-import { RefreshCw, Unplug } from "lucide-react";
+import { ExternalLink, RefreshCw, Unplug } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -92,11 +92,30 @@ export function IntegrationSettingsPanel({ settings }: { settings: IntegrationSe
     });
   }
 
+  async function openGitHubInstall() {
+    setMessage(null);
+    const response = await fetch("/api/integrations/github/install-url");
+    const payload = await response.json();
+
+    if (!payload.ok) {
+      setMessage(payload.error?.message ?? "GitHub install failed.");
+      return;
+    }
+
+    window.location.assign(payload.data.installUrl);
+  }
+
   return (
     <section className="grid gap-6">
       {message ? <p className="rounded-md border border-[color:var(--border)] bg-[color:var(--surface-alt)] px-3 py-2 text-sm">{message}</p> : null}
 
       <IntegrationSection title="GitHub">
+        <div>
+          <Button disabled={isPending} onClick={openGitHubInstall} size="sm" type="button" variant="primary">
+            <ExternalLink className="size-4" aria-hidden="true" />
+            Install GitHub App
+          </Button>
+        </div>
         {settings.github.length ? settings.github.map((installation) => (
           <article className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4" key={installation.id}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -135,10 +154,26 @@ export function IntegrationSettingsPanel({ settings }: { settings: IntegrationSe
       </IntegrationSection>
 
       <IntegrationSection title="ChatGPT App">
+        <div>
+          <Button asChild size="sm" variant="primary">
+            <a href="/api/integrations/chatgpt/app" rel="noreferrer" target="_blank">
+              <ExternalLink className="size-4" aria-hidden="true" />
+              Open manifest
+            </a>
+          </Button>
+        </div>
         {settings.chatgpt.length ? settings.chatgpt.map((account) => <IntegrationRow item={account} key={account.id} />) : <EmptyLine>Not connected</EmptyLine>}
       </IntegrationSection>
 
       <IntegrationSection title="Codex Action">
+        <div>
+          <Button asChild size="sm" variant="primary">
+            <a href="/api/mcp" rel="noreferrer" target="_blank">
+              <ExternalLink className="size-4" aria-hidden="true" />
+              Open MCP tools
+            </a>
+          </Button>
+        </div>
         {settings.codexAction.length ? settings.codexAction.map((connection) => <ConnectionRow connection={connection} isPending={isPending} key={connection.id} />) : <EmptyLine>No action sources</EmptyLine>}
       </IntegrationSection>
 

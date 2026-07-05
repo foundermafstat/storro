@@ -277,13 +277,19 @@ export function ProjectWorkflowPanel({
             <Button asChild size="sm" variant="secondary">
               <Link href={`/dashboard/projects/${projectId}/imports/chatgpt`}>
                 <UploadCloud className="size-4" aria-hidden="true" />
-                ChatGPT import
+                ChatGPT App
               </Link>
             </Button>
             <Button asChild size="sm" variant="secondary">
               <Link href={`/dashboard/projects/${projectId}/integrations/github/pull-requests`}>
                 <GitPullRequest className="size-4" aria-hidden="true" />
                 GitHub PRs
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="secondary">
+              <Link href={`/dashboard/projects/${projectId}/codex-evidence`}>
+                <Bot className="size-4" aria-hidden="true" />
+                Codex MCP
               </Link>
             </Button>
           </div>
@@ -327,7 +333,7 @@ export function ProjectWorkflowPanel({
           </div>
           {sources.length === 0 ? (
             <div className="p-4 text-sm text-[color:var(--muted)]">
-              Add a manual note, ChatGPT export, or GitHub pull request to start the pipeline.
+              Connect ChatGPT App, GitHub App, Codex MCP, or add a manual note to start the pipeline.
             </div>
           ) : (
             <ul className="divide-y divide-[color:var(--border)]">

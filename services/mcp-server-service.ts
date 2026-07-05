@@ -13,6 +13,7 @@ import { requireScopedContext, type ScopedContext } from "@/services/scoped-cont
 type McpToolName =
   | "create_project"
   | "list_projects"
+  | "ingest_chatgpt_context"
   | "ingest_research_note"
   | "ingest_build_note"
   | "generate_story"
@@ -22,6 +23,7 @@ type McpToolName =
 const toolSchemas = {
   create_project: z.object({ name: z.string().min(1), description: z.string().optional() }),
   list_projects: z.object({ search: z.string().optional() }),
+  ingest_chatgpt_context: z.object({ projectId: z.string().uuid(), title: z.string().min(1), body: z.string().min(1), sourceUrl: z.string().url().optional() }),
   ingest_research_note: z.object({ projectId: z.string().uuid(), title: z.string().min(1), body: z.string().min(1) }),
   ingest_build_note: z.object({ projectId: z.string().uuid(), title: z.string().min(1), body: z.string().min(1) }),
   generate_story: z.object({ projectId: z.string().uuid(), storyRunId: z.string().uuid(), promptVersion: z.string().optional() }),
@@ -38,6 +40,11 @@ export const mcpTools = [
   tool("list_projects", "List projects visible to the authenticated user.", {
     type: "object",
     properties: { search: { type: "string" } },
+  }),
+  tool("ingest_chatgpt_context", "Create a Storro source from selected ChatGPT conversation context.", {
+    type: "object",
+    required: ["projectId", "title", "body"],
+    properties: { projectId: { type: "string" }, title: { type: "string" }, body: { type: "string" }, sourceUrl: { type: "string" } },
   }),
   tool("ingest_research_note", "Create a normal Storro source record from explicit research text.", {
     type: "object",
@@ -112,6 +119,29 @@ async function dispatchTool(context: ScopedContext, name: McpToolName, rawArgs: 
     case "list_projects": {
       const args = toolSchemas.list_projects.parse(rawArgs);
       return { projects: await listProjects(context, { search: args.search }, db) };
+    }
+    case "ingest_chatgpt_context": {
+      const args = toolSchemas.ingest_chatgpt_context.parse(rawArgs);
+      return {
+        source: await createSourceDocument(context, {
+          projectId: args.projectId,
+          title: args.title,
+          body: args.body,
+          sourceType: "CHATGPT_NOTE",
+          tags: ["mcp", "chatgpt", "selected-context"],
+          provenance: {
+            kind: "chatgpt",
+            externalUrl: args.sourceUrl,
+            importedAt: new Date(),
+          },
+          metadata: {
+            chatGptConnector: {
+              selectedOnly: true,
+              importedAt: new Date().toISOString(),
+            },
+          },
+        }, db),
+      };
     }
     case "ingest_research_note": {
       const args = toolSchemas.ingest_research_note.parse(rawArgs);

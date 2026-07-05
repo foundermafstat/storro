@@ -12,4 +12,8 @@ describe("protected route map", () => {
   it("keeps NextAuth API routes public for session flows", () => {
     expect(isProtectedPath("/api/auth/signin")).toBe(false);
   });
+
+  it("keeps MCP public so remote clients can reach token auth", () => {
+    expect(isProtectedPath("/api/mcp")).toBe(false);
+  });
 });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createApiRoute } from "@/server/api/route-handler";
 import { getCurrentAuthContext } from "@/server/auth-context";
-import { createServerEnv } from "@/server/env";
+import { createGitHubAppEnv } from "@/server/env";
 import { GitHubRestAppClient } from "@/services/github-app-service";
 import {
   executeGitHubWriteAction,
@@ -67,7 +67,7 @@ export const POST = createApiRoute({
       return { preview };
     }
 
-    const env = createServerEnv();
+    const env = createGitHubAppEnv();
     const result = await executeGitHubWriteAction(
       context,
       {

@@ -35,8 +35,10 @@ const serverEnvSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL_EXTRACTION: z.string().min(1),
   OPENAI_MODEL_GENERATION: z.string().min(1),
+  CHATGPT_CONNECTOR_TOKEN: z.string().min(32).optional(),
 
   GITHUB_APP_ID: z.string().min(1),
+  GITHUB_APP_SLUG: z.string().regex(/^[a-zA-Z0-9-]+$/).optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().min(1),
   GITHUB_APP_WEBHOOK_SECRET: z.string().min(1),
   GITHUB_APP_CLIENT_ID: z.string().min(1),
@@ -48,7 +50,17 @@ const serverEnvSchema = z.object({
   ANALYTICS_WRITE_KEY: z.string().optional(),
 });
 
+const githubAppEnvSchema = z.object({
+  GITHUB_APP_ID: z.string().min(1),
+  GITHUB_APP_SLUG: z.string().regex(/^[a-zA-Z0-9-]+$/).optional(),
+  GITHUB_APP_PRIVATE_KEY: z.string().min(1),
+  GITHUB_APP_WEBHOOK_SECRET: z.string().min(1),
+  GITHUB_APP_CLIENT_ID: z.string().min(1),
+  GITHUB_APP_CLIENT_SECRET: z.string().min(1),
+});
+
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
+export type GitHubAppEnv = z.infer<typeof githubAppEnvSchema>;
 
 export function createServerEnv(input: EnvInput = process.env): ServerEnv {
   const parsed = serverEnvSchema.safeParse(input);
@@ -67,6 +79,23 @@ export function createServerEnv(input: EnvInput = process.env): ServerEnv {
   };
 }
 
+export function createGitHubAppEnv(input: EnvInput = process.env): GitHubAppEnv {
+  const parsed = githubAppEnvSchema.safeParse(input);
+
+  if (!parsed.success) {
+    const missingOrInvalid = parsed.error.issues
+      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
+      .join("; ");
+
+    throw new Error(`Invalid GitHub App environment: ${missingOrInvalid}`);
+  }
+
+  return {
+    ...parsed.data,
+    GITHUB_APP_PRIVATE_KEY: parsed.data.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  };
+}
+
 export const requiredServerEnvKeys = Object.keys(serverEnvSchema.shape).filter(
-  (key) => !["NODE_ENV", "LOG_LEVEL", "SENTRY_DSN", "ANALYTICS_WRITE_KEY"].includes(key),
+  (key) => !["NODE_ENV", "LOG_LEVEL", "GITHUB_APP_SLUG", "SENTRY_DSN", "ANALYTICS_WRITE_KEY"].includes(key),
 );
