@@ -83,7 +83,7 @@ for attempt in {1..30}; do
 done
 
 echo "Installing dependencies..."
-npm ci
+npm ci --include=dev
 
 echo "Generating Prisma client..."
 npm run db:generate
