@@ -27,7 +27,10 @@
     "deploy:health": "node scripts/deployment-health.mjs",
     "deploy:migrate": "node scripts/deploy-migrate.mjs",
     "worker:start": "node scripts/worker-entry.mjs",
-    "worker:health": "node scripts/worker-entry.mjs --health"
+    "worker:health": "node scripts/worker-entry.mjs --health",
+    "load:test": "node scripts/load-test.mjs",
+    "accessibility:check": "node scripts/accessibility-check.mjs",
+    "launch:readiness": "npm run load:test && npm run accessibility:check && npm run coverage:critical"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1079.0",
