@@ -16,4 +16,10 @@ describe("protected route map", () => {
   it("keeps MCP public so remote clients can reach token auth", () => {
     expect(isProtectedPath("/api/mcp")).toBe(false);
   });
+
+  it("keeps external integration entrypoints public", () => {
+    expect(isProtectedPath("/api/integrations/chatgpt/app")).toBe(false);
+    expect(isProtectedPath("/api/webhooks/github")).toBe(false);
+    expect(isProtectedPath("/api/billing/webhook")).toBe(false);
+  });
 });
