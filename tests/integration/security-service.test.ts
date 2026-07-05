@@ -1,8 +1,7 @@
-import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { middleware } from "@/middleware";
 import { prisma } from "@/db/client";
 import { createProject } from "@/services/project-service";
+import { applySecurityHeaders } from "@/services/security-headers-service";
 import {
   assertSecurityRateLimit,
   decryptSecret,
@@ -20,14 +19,6 @@ let orgId = "";
 let orgSlug = "";
 let userId = "";
 let context: ScopedContext;
-
-function createRequest(path: string) {
-  return new NextRequest(`https://storro.test${path}`, {
-    headers: {
-      "x-forwarded-for": `127.0.0.${Math.floor(Math.random() * 200)}`,
-    },
-  });
-}
 
 describe("security hardening service", () => {
   beforeAll(async () => {
@@ -76,13 +67,13 @@ describe("security hardening service", () => {
     expect(() => assertSecurityRateLimit("security-test", { limit: 2, windowMs: 60_000, now: 3 })).toThrow("Security rate limit exceeded.");
   });
 
-  it("adds strict security headers from middleware", () => {
-    const response = middleware(createRequest("/dashboard"));
+  it("adds strict security headers", () => {
+    const headers = applySecurityHeaders(new Headers());
 
-    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
-    expect(response.headers.get("strict-transport-security")).toContain("max-age=");
-    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(headers.get("strict-transport-security")).toContain("max-age=");
+    expect(headers.get("x-content-type-options")).toBe("nosniff");
+    expect(headers.get("x-frame-options")).toBe("DENY");
   });
 
   it("exports and deletes organization data with anonymization", async () => {
