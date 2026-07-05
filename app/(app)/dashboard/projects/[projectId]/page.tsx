@@ -1,11 +1,18 @@
+import { prisma } from "@/db/client";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ProjectWorkflowPanel } from "@/components/project-workflow-panel";
 import { getCurrentAuthContext } from "@/server/auth-context";
+import { listExtractionFacts } from "@/services/extraction-review-service";
 import {
   extractProjectSettings,
   getProjectById,
   getProjectDashboardSummary,
 } from "@/services/project-service";
+import { listStoryPlans } from "@/services/story-planning-service";
+import { listTemplateCatalog } from "@/services/template-service";
+import Link from "next/link";
 
 export default async function ProjectDetailPage({
   params,
@@ -20,9 +27,76 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const [summary, settings] = await Promise.all([
+  const [summary, settings, sources, facts, storyRuns, catalog, extractionRuns, artifacts, generationJobs] = await Promise.all([
     getProjectDashboardSummary(context, project.id),
     Promise.resolve(extractProjectSettings(project.metadata)),
+    prisma.sourceDocument.findMany({
+      where: {
+        orgId: context.orgId,
+        projectId: project.id,
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 25,
+      include: {
+        normalizedSources: {
+          select: {
+            id: true,
+            _count: {
+              select: {
+                chunks: true,
+              },
+            },
+          },
+        },
+        redactionReports: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            blocked: true,
+          },
+          take: 1,
+        },
+      },
+    }),
+    listExtractionFacts(context, { projectId: project.id }),
+    listStoryPlans(context, { projectId: project.id }),
+    listTemplateCatalog(context, { projectId: project.id }),
+    prisma.extractionRun.findMany({
+      where: {
+        orgId: context.orgId,
+        projectId: project.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 10,
+    }),
+    prisma.storyArtifact.findMany({
+      where: {
+        orgId: context.orgId,
+        projectId: project.id,
+        archivedAt: null,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 10,
+    }),
+    prisma.job.findMany({
+      where: {
+        orgId: context.orgId,
+        projectId: project.id,
+        type: "STORY_GENERATION",
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 5,
+    }),
   ]);
 
   const cards = [
@@ -67,7 +141,12 @@ export default async function ProjectDetailPage({
 
       <section className="mt-8 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)]">
         <div className="border-b border-[color:var(--border)] p-4">
-          <h2 className="font-semibold">Recent jobs</h2>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <h2 className="font-semibold">Recent jobs</h2>
+            <Button asChild size="sm" variant="secondary">
+              <Link href="/dashboard">Back to dashboard</Link>
+            </Button>
+          </div>
         </div>
         {summary.recentJobs.length === 0 ? (
           <p className="p-4 text-sm text-[color:var(--muted)]">No jobs yet.</p>
@@ -82,6 +161,64 @@ export default async function ProjectDetailPage({
           </ul>
         )}
       </section>
+
+      <ProjectWorkflowPanel
+        approvedFactCount={facts.filter((fact) => fact.reviewStatus === "APPROVED").length}
+        artifacts={artifacts.map((artifact) => ({
+          id: artifact.id,
+          title: artifact.title,
+          format: artifact.format,
+          status: artifact.status,
+          groundingState: artifact.groundingState,
+          createdAt: artifact.createdAt.toISOString(),
+        }))}
+        extractionRuns={extractionRuns.map((run) => ({
+          id: run.id,
+          status: run.status,
+          selectedSourceIds: run.selectedSourceIds,
+          createdAt: run.createdAt.toISOString(),
+          errorMessage: run.errorMessage,
+        }))}
+        factCounts={{
+          pending: facts.filter((fact) => fact.reviewStatus === "PENDING").length,
+          approved: facts.filter((fact) => fact.reviewStatus === "APPROVED").length,
+          rejected: facts.filter((fact) => fact.reviewStatus === "REJECTED").length,
+          privateFacts: facts.filter((fact) => fact.isPrivate).length,
+        }}
+        generationJobs={generationJobs.map((job) => ({
+          id: job.id,
+          status: job.status,
+          createdAt: job.createdAt.toISOString(),
+          error: job.error,
+        }))}
+        projectId={project.id}
+        sources={sources.map((source) => ({
+          id: source.id,
+          title: source.title,
+          sourceType: source.sourceType,
+          status: source.status,
+          isPrivate: source.isPrivate,
+          parsedAt: source.parsedAt?.toISOString() ?? null,
+          normalizedCount: source.normalizedSources.length,
+          chunkCount: source.normalizedSources.reduce((total, normalizedSource) => total + normalizedSource._count.chunks, 0),
+          redactionBlocked: source.redactionReports[0]?.blocked ?? null,
+        }))}
+        storyRuns={storyRuns.map((run) => ({
+          id: run.id,
+          status: run.status,
+          templateId: run.templateId,
+          format: run.format,
+          hasPlan: Boolean(run.storyPlan),
+          createdAt: run.createdAt.toISOString(),
+          errorMessage: run.errorMessage,
+        }))}
+        templates={catalog.templates.map((item) => ({
+          id: item.template.id,
+          name: item.template.name,
+          format: item.template.format,
+          available: item.available,
+        }))}
+      />
     </main>
   );
 }

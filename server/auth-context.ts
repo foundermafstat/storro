@@ -1,11 +1,12 @@
 import { auth } from "@/auth";
 import { resolveLocalAuthContext } from "@/services/auth-context-service";
+import { AuthenticationError } from "@/services/errors";
 
 export async function getCurrentAuthContext(selectedOrgId?: string | null) {
   const session = await auth();
 
   if (!session?.user?.id) {
-    throw new Error("Authentication is required.");
+    throw new AuthenticationError();
   }
 
   return resolveLocalAuthContext({

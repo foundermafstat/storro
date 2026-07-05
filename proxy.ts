@@ -1,5 +1,7 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
+import { apiErrorMessages } from "@/lib/api-contract";
+import { isProtectedPath } from "@/server/protected-routes";
 import { applySecurityHeaders } from "@/services/security-headers-service";
 
 type Bucket = {
@@ -12,6 +14,30 @@ const apiLimit = 120;
 const apiWindowMs = 60_000;
 
 export default auth((request) => {
+  const protectedPath = isProtectedPath(request.nextUrl.pathname);
+
+  if (protectedPath && !request.auth?.user) {
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return withSecurityHeaders(
+        NextResponse.json(
+          {
+            ok: false,
+            error: {
+              code: "UNAUTHORIZED",
+              message: apiErrorMessages.UNAUTHORIZED,
+            },
+          },
+          { status: 401 },
+        ),
+      );
+    }
+
+    const signInUrl = new URL("/sign-in", request.nextUrl.origin);
+    signInUrl.searchParams.set("callbackUrl", request.nextUrl.href);
+
+    return withSecurityHeaders(NextResponse.redirect(signInUrl));
+  }
+
   if (request.nextUrl.pathname.startsWith("/api/")) {
     const key = `${request.headers.get("x-forwarded-for") ?? "unknown"}:${request.nextUrl.pathname}`;
     const limited = checkLimit(key, Date.now());
