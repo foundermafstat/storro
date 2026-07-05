@@ -6,6 +6,7 @@ import {
   type ApiErrorResponse,
   type ApiResponse,
 } from "@/lib/api-contract";
+import { recordApiMetric, reportErrorToSentry } from "@/services/observability-service";
 import { ServiceError, ValidationServiceError } from "@/services/errors";
 
 export type ApiLogEntry = {
@@ -74,7 +75,7 @@ export function createApiRoute<
       });
       const statusCode = options.successStatus ?? 200;
 
-      logApiRequest(options.logger, {
+      const logEntry = {
         level: "info",
         event: "api.request",
         requestId,
@@ -82,13 +83,16 @@ export function createApiRoute<
         path,
         statusCode,
         durationMs: Date.now() - startedAt,
-      });
+      } as const;
+
+      logApiRequest(options.logger, logEntry);
+      recordApiMetric(logEntry);
 
       return jsonResponse<TData>({ ok: true, requestId, data }, statusCode, requestId);
     } catch (error) {
       const normalized = normalizeApiError(error);
 
-      logApiRequest(options.logger, {
+      const logEntry = {
         level: normalized.statusCode >= 500 ? "error" : "warn",
         event: "api.request",
         requestId,
@@ -98,7 +102,19 @@ export function createApiRoute<
         durationMs: Date.now() - startedAt,
         errorCode: normalized.code,
         errorName: normalized.errorName,
-      });
+      } as const;
+
+      logApiRequest(options.logger, logEntry);
+      recordApiMetric(logEntry);
+
+      if (normalized.statusCode >= 500) {
+        void reportErrorToSentry(error, {
+          requestId,
+          method: request.method,
+          path,
+          statusCode: normalized.statusCode,
+        });
+      }
 
       const payload: ApiErrorResponse = {
         ok: false,
