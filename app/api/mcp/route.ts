@@ -30,7 +30,7 @@ const projectScopedToolNames = new Set([
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
 
-  return NextResponse.json({
+  return jsonResponse({
     name: "Storro MCP",
     endpoint: "/api/mcp",
     publicHttps: url.protocol === "https:",
@@ -44,16 +44,20 @@ export async function POST(request: NextRequest) {
   if (Array.isArray(rawBody)) {
     const responses = await Promise.all(rawBody.map((item) => handleJsonRpcMessage(request, item)));
 
-    return NextResponse.json(responses.filter(Boolean));
+    return jsonResponse(responses.filter(Boolean));
   }
 
   const response = await handleJsonRpcMessage(request, rawBody);
 
   if (!response) {
-    return new NextResponse(null, { status: 204 });
+    return emptyResponse();
   }
 
-  return NextResponse.json(response);
+  return jsonResponse(response);
+}
+
+export async function OPTIONS() {
+  return emptyResponse();
 }
 
 async function handleJsonRpcMessage(request: NextRequest, rawBody: unknown) {
@@ -191,6 +195,34 @@ function jsonRpcError(id: string | number | null | undefined, code: number, mess
       code,
       message,
     },
+  };
+}
+
+function jsonResponse(body: unknown) {
+  return NextResponse.json(body, {
+    headers: corsHeaders(),
+  });
+}
+
+function emptyResponse() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders(),
+  });
+}
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": [
+      "Authorization",
+      "Content-Type",
+      "MCP-Protocol-Version",
+      "Mcp-Session-Id",
+      "Last-Event-ID",
+    ].join(", "),
+    "Access-Control-Max-Age": "86400",
   };
 }
 
