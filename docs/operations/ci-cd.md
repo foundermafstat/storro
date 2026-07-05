@@ -10,6 +10,9 @@ Required checks:
 - `npm run lint`
 - `npm run test:unit`
 - `npm run test:integration`
+- `npm run test:e2e`
+- `npm run test:ai-eval`
+- `npm run coverage:critical`
 - `npm run prisma:validate`
 - `npm run secret:scan`
 - `npm run audit:ci`
@@ -34,3 +37,13 @@ Configure GitHub branch protection for `main`:
 ## Artifacts
 
 The CI workflow uploads a `ci-summary` artifact with commit, job, and completion metadata. Future stages can add coverage, Playwright, Prisma, and AI evaluation reports to the same artifact path.
+
+## Deployment Gates
+
+Staging and production deployments run:
+
+- `npm run deploy:migrate`
+- `npm run deploy:health`
+- `npm run worker:health`
+
+Provider-specific web and worker rollout commands are environment-owned and must keep web and worker independently scalable.

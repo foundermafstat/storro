@@ -40,6 +40,15 @@ jobs:
       - name: Integration tests
         run: npm run test:integration
 
+      - name: E2E tests
+        run: npm run test:e2e
+
+      - name: AI evaluation tests
+        run: npm run test:ai-eval
+
+      - name: Critical coverage report
+        run: npm run coverage:critical
+
       - name: Prisma validation
         run: npm run prisma:validate
 

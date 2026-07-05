@@ -23,7 +23,11 @@
     "db:seed": "node prisma/seed.mjs",
     "secret:scan": "node scripts/secret-scan.mjs",
     "audit:ci": "npm audit --audit-level=high",
-    "coverage:critical": "node scripts/coverage-report.mjs"
+    "coverage:critical": "node scripts/coverage-report.mjs",
+    "deploy:health": "node scripts/deployment-health.mjs",
+    "deploy:migrate": "node scripts/deploy-migrate.mjs",
+    "worker:start": "node scripts/worker-entry.mjs",
+    "worker:health": "node scripts/worker-entry.mjs --health"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1079.0",
