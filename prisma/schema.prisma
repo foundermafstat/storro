@@ -129,6 +129,28 @@ enum JobType {
   BILLING_RECONCILE
 }
 
+enum NotificationType {
+  EXTRACTION_COMPLETE
+  GENERATION_COMPLETE
+  GROUNDING_FAILED
+  GITHUB_SYNC_FAILED
+  WEBHOOK_DISCONNECTED
+  QUOTA_WARNING
+  BILLING_ISSUE
+  EXPORT_READY
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum NotificationPreferenceScope {
+  ORG_DEFAULT
+  USER
+}
+
 enum JobStatus {
   QUEUED
   RUNNING
@@ -179,13 +201,15 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  memberships      Membership[]
-  createdProjects  Project[]              @relation("ProjectOwner")
-  createdSources   SourceDocument[]       @relation("SourceCreator")
-  editorRevisions  EditorRevision[]
-  usageEvents      UsageEvent[]
-  auditLogs        AuditLog[]
-  createdTemplates OrganizationTemplate[] @relation("TemplateCreator")
+  memberships             Membership[]
+  createdProjects         Project[]                @relation("ProjectOwner")
+  createdSources          SourceDocument[]         @relation("SourceCreator")
+  editorRevisions         EditorRevision[]
+  usageEvents             UsageEvent[]
+  auditLogs               AuditLog[]
+  createdTemplates        OrganizationTemplate[]   @relation("TemplateCreator")
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@index([email])
 }
@@ -197,28 +221,30 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships         Membership[]
-  projects            Project[]
-  sourceDocuments     SourceDocument[]
-  sourceFiles         SourceFile[]
-  sourceConnections   SourceConnection[]
-  normalizedSources   NormalizedSource[]
-  normalizedChunks    NormalizedSourceChunk[]
-  redactionReports    RedactionReport[]
-  extractionRuns      ExtractionRun[]
-  extractionFacts     ExtractionFact[]
-  storyRuns           StoryRun[]
-  storyArtifacts      StoryArtifact[]
-  templates           OrganizationTemplate[]
-  editorRevisions     EditorRevision[]
-  artifactExports     ArtifactExport[]
-  jobs                Job[]
-  usageEvents         UsageEvent[]
-  auditLogs           AuditLog[]
-  integrationAccounts IntegrationAccount[]
-  githubInstallations GithubInstallation[]
-  billingAccount      BillingAccount?
-  webhookDeliveries   WebhookDelivery[]
+  memberships             Membership[]
+  projects                Project[]
+  sourceDocuments         SourceDocument[]
+  sourceFiles             SourceFile[]
+  sourceConnections       SourceConnection[]
+  normalizedSources       NormalizedSource[]
+  normalizedChunks        NormalizedSourceChunk[]
+  redactionReports        RedactionReport[]
+  extractionRuns          ExtractionRun[]
+  extractionFacts         ExtractionFact[]
+  storyRuns               StoryRun[]
+  storyArtifacts          StoryArtifact[]
+  templates               OrganizationTemplate[]
+  editorRevisions         EditorRevision[]
+  artifactExports         ArtifactExport[]
+  jobs                    Job[]
+  usageEvents             UsageEvent[]
+  auditLogs               AuditLog[]
+  integrationAccounts     IntegrationAccount[]
+  githubInstallations     GithubInstallation[]
+  billingAccount          BillingAccount?
+  webhookDeliveries       WebhookDelivery[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@index([slug])
 }
@@ -269,6 +295,7 @@ model Project {
   jobs              Job[]
   usageEvents       UsageEvent[]
   auditLogs         AuditLog[]
+  notifications     Notification[]
 
   @@unique([orgId, slug])
   @@index([orgId, status, updatedAt])
@@ -618,6 +645,55 @@ model Job {
   @@index([status, runAfter])
   @@index([orgId, projectId, type])
   @@index([queueName, status])
+}
+
+model Notification {
+  id         String               @id @default(uuid())
+  orgId      String
+  projectId  String?
+  userId     String
+  type       NotificationType
+  severity   NotificationSeverity @default(INFO)
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  dedupeKey  String
+  channels   Json?
+  readAt     DateTime?
+  emailedAt  DateTime?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId, dedupeKey])
+  @@index([orgId, userId, readAt, createdAt])
+  @@index([projectId, type])
+  @@index([orgId, type, severity])
+}
+
+model NotificationPreference {
+  id                 String                      @id @default(uuid())
+  orgId              String
+  userId             String?
+  subjectId          String
+  scope              NotificationPreferenceScope @default(USER)
+  emailEnabled       Boolean                     @default(true)
+  inAppEnabled       Boolean                     @default(true)
+  disabledEmailTypes NotificationType[]          @default([])
+  disabledInAppTypes NotificationType[]          @default([])
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, subjectId])
+  @@index([orgId, scope])
+  @@index([userId])
 }
 
 model UsageEvent {

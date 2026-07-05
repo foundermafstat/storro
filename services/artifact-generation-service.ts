@@ -10,6 +10,7 @@ import {
 } from "@/services/ai-gateway";
 import { assertOrgPermission, assertProjectPermission } from "@/services/authorization-service";
 import { NotFoundError, ValidationServiceError } from "@/services/errors";
+import { notifyJobCompletion } from "@/services/notification-service";
 import { storyPlanSchema, type StoryPlan } from "@/services/story-planning-service";
 import { getTemplateDefinition, type TemplateDefinition } from "@/services/template-service";
 import { requireScopedContext, type ScopedContext } from "@/services/scoped-context";
@@ -160,6 +161,7 @@ export async function executeArtifactGenerationJob(
         },
       },
     });
+    await notifyJobCompletion(context, { jobId: completed.id }, undefined, db);
 
     return {
       job: completed,

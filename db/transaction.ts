@@ -27,6 +27,8 @@ type PrismaClientLike = Pick<
   | "membership"
   | "normalizedSource"
   | "normalizedSourceChunk"
+  | "notification"
+  | "notificationPreference"
   | "auditLog"
   | "organization"
   | "organizationTemplate"
