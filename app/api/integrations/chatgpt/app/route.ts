@@ -24,7 +24,7 @@ const bodySchema = z.discriminatedUnion("action", [
 
 export const GET = createApiRoute({
   handler: async ({ request }) => ({
-    manifest: chatGptAppManifest(new URL(request.url).origin),
+    manifest: chatGptAppManifest(process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin),
   }),
 });
 
